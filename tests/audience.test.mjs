@@ -16,11 +16,14 @@ const SHARE_BODY =
 
 // Loads audience.js against a stand-in page whose share endpoint echoes the
 // audience it receives, the way Instagram's response reports it.
-function loadPage({ phone = true } = {}) {
+function loadPage({ phone = true, respond } = {}) {
   const window = new EventTarget();
   const sent = [];
   window.fetch = async (url, options = {}) => {
     sent.push({ url, body: options.body });
+    if (respond) {
+      return respond();
+    }
     const audience = new URLSearchParams(String(options.body)).get("audience");
     return new Response(JSON.stringify({ media: { id: 1, audience } }));
   };
@@ -51,9 +54,11 @@ function loadPage({ phone = true } = {}) {
     TypeError,
     console: { warn() {} },
   });
-  const handOff = (closeFriends) =>
+  const handOff = (closeFriends, reshare, skipFacebook = false) =>
     window.dispatchEvent(
-      new CustomEvent("ig-plus:handoff", { detail: { closeFriends } }),
+      new CustomEvent("ig-plus:handoff", {
+        detail: { closeFriends, skipFacebook, reshare },
+      }),
     );
   const shared = () =>
     new Promise((resolve) =>
@@ -125,6 +130,93 @@ test("amends shares sent with XMLHttpRequest", async () => {
   request.send(SHARE_BODY);
   assert.equal(params(page.sent[0].body).audience, "besties");
   assert.equal(await status, "close-friends");
+});
+
+const RESHARE = {
+  mediaId: "4023902473054651797",
+  card: { x: 0.5, y: 0.45, width: 0.8, height: 0.5 },
+};
+
+test("links a shared post to the story", async () => {
+  const page = loadPage();
+  let notices = 0;
+  page.window.addEventListener("ig-plus:shared", () => notices++);
+  page.handOff(false, RESHARE);
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  const body = params(page.sent[0].body);
+  assert.equal(body.reshared_media_id, RESHARE.mediaId);
+  assert.equal(body.story_sticker_ids, `media_simple_${RESHARE.mediaId}`);
+  const [sticker] = JSON.parse(body.attached_media);
+  assert.equal(sticker.media_id, RESHARE.mediaId);
+  assert.equal(sticker.y, 0.45);
+  assert.equal(body.audience, undefined);
+  assert.equal(body.share_to_facebook, "true");
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  assert.equal(params(page.sent[1].body).reshared_media_id, undefined);
+  assert.equal(notices, 0);
+});
+
+test("links a shared post in a close friends story", async () => {
+  const page = loadPage();
+  page.handOff(true, RESHARE);
+  const status = page.shared();
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  const body = params(page.sent[0].body);
+  assert.equal(body.audience, "besties");
+  assert.equal(body.reshared_media_id, RESHARE.mediaId);
+  assert.equal(await status, "close-friends");
+});
+
+test("still shares a public story whose request it cannot read", async () => {
+  const page = loadPage();
+  page.handOff(false, RESHARE);
+  const body = new Blob(["x"]);
+  await page.window.fetch(SHARE_URL, { method: "POST", body });
+  assert.equal(page.sent[0].body, body);
+});
+
+test("keeps a public story off Facebook when asked", async () => {
+  const page = loadPage();
+  let notices = 0;
+  page.window.addEventListener("ig-plus:shared", () => notices++);
+  page.handOff(false, null, true);
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  const body = params(page.sent[0].body);
+  assert.equal(body.share_to_facebook, "false");
+  assert.equal(body.share_to_fb_destination_id, undefined);
+  assert.equal(body.share_to_fb_destination_type, undefined);
+  assert.equal(body.audience, undefined);
+  assert.equal(notices, 0);
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  assert.equal(params(page.sent[1].body).share_to_facebook, "true");
+});
+
+test("stops a story kept off Facebook that it cannot read", async () => {
+  const page = loadPage();
+  page.handOff(false, null, true);
+  const status = page.shared();
+  await assert.rejects(
+    page.window.fetch(SHARE_URL, { method: "POST", body: new Blob(["x"]) }),
+  );
+  assert.equal(page.sent.length, 0);
+  assert.equal(await status, "blocked-facebook");
+});
+
+test("waits for a video's processing before reporting", async () => {
+  const page = loadPage({
+    respond: () =>
+      new Response(JSON.stringify({ message: "Transcode not finished yet." }), {
+        status: 202,
+      }),
+  });
+  const notices = [];
+  page.window.addEventListener("ig-plus:shared", (event) =>
+    notices.push(event.detail.status),
+  );
+  page.handOff(true);
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  await new Promise((resolve) => setTimeout(resolve));
+  assert.deepEqual(notices, []);
 });
 
 test("does nothing outside phone tabs", async () => {

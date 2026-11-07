@@ -40,6 +40,22 @@
     return false;
   }
 
+  // Set while IG Plus opens Instagram's story composer itself, for a story
+  // already made from the feed: the composer's file input goes to it instead
+  // of the camera.
+  let inputWaiter = null;
+  function claimInput(element) {
+    if (
+      !inputWaiter ||
+      !(element instanceof HTMLInputElement) ||
+      element.type !== "file"
+    ) {
+      return false;
+    }
+    inputWaiter(element);
+    return true;
+  }
+
   function wantsCamera(element) {
     return (
       !bypass &&
@@ -62,6 +78,9 @@
   // Clicks on connected inputs reach the listener below; detached inputs
   // never dispatch to the window, so catch them here.
   HTMLInputElement.prototype.click = function () {
+    if (claimInput(this)) {
+      return;
+    }
     if (wantsCamera(this) && !this.isConnected) {
       showCamera(this);
       return;
@@ -70,6 +89,9 @@
   };
 
   HTMLInputElement.prototype.showPicker = function () {
+    if (claimInput(this)) {
+      return;
+    }
     if (wantsCamera(this)) {
       showCamera(this);
       return;
@@ -83,6 +105,10 @@
       if (mentionsStory(event)) {
         lastStoryClick = Date.now();
       }
+      if (claimInput(event.target)) {
+        event.preventDefault();
+        return;
+      }
       if (wantsCamera(event.target)) {
         event.preventDefault();
         showCamera(event.target);
@@ -90,6 +116,162 @@
     },
     true,
   );
+
+  // The last post or reel this tab showed, offered when sharing a post. Paths
+  // look like /p/CODE/, /reel/CODE/, or /username/p/CODE/, while a reel's
+  // sound has a page at /reels/audio/ID/.
+  const POST_PATH = /^\/(?:[\w.]+\/)?(?:p|reels?|tv)\/(?!audio\/)([\w-]+)/;
+  function rememberPost(url) {
+    const shortcode = new URL(url, location.href).pathname.match(
+      POST_PATH,
+    )?.[1];
+    if (shortcode) {
+      sessionStorage.setItem("ig-plus:post", shortcode);
+    }
+  }
+  rememberPost(location.href);
+  navigation.addEventListener("navigate", (event) =>
+    rememberPost(event.destination.url),
+  );
+
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // Opens Instagram's story composer the way a person would, through New post
+  // and then Story, and resolves to the file input it opens.
+  function requestStoryInput() {
+    return new Promise((resolve, reject) => {
+      const fail = (error) => {
+        clearTimeout(timeout);
+        inputWaiter = null;
+        reject(error);
+      };
+      const timeout = setTimeout(
+        () => fail(new Error("Instagram's story composer did not open")),
+        8000,
+      );
+      inputWaiter = (input) => {
+        clearTimeout(timeout);
+        inputWaiter = null;
+        resolve(input);
+      };
+      openStoryMenu().catch(fail);
+    });
+  }
+
+  // Polls for an element, since Instagram renders menus and headers late.
+  async function find(lookup, tries = 20) {
+    for (let attempt = 0; attempt < tries; attempt++) {
+      const found = lookup();
+      if (found) {
+        return found;
+      }
+      await wait(100);
+    }
+    return null;
+  }
+
+  async function openStoryMenu() {
+    // The phone layout's plus is a bare icon in a plain element, so fall back
+    // to clicking the icon itself.
+    const newPostButton = () => {
+      const plus = document.querySelector(
+        'svg[aria-label="New post"], svg[aria-label="Create"], svg[aria-label="Plus icon"]',
+      );
+      return plus?.closest(CONTROL) ?? plus;
+    };
+    // The phone layout has the plus only in the home feed's header, which
+    // goes away while scrolling down.
+    if (!newPostButton()) {
+      const home = document
+        .querySelector('svg[aria-label="Home"]')
+        ?.closest("a");
+      if (location.pathname !== "/" && home) {
+        home.click();
+      } else {
+        window.scrollTo(0, 0);
+      }
+    }
+    const newPost = await find(newPostButton, 50);
+    if (!newPost) {
+      console.warn(
+        "IG Plus looked for the plus button among:",
+        [...document.querySelectorAll("svg[aria-label]")].map((svg) =>
+          svg.getAttribute("aria-label"),
+        ),
+      );
+      throw new Error("could not find Instagram's plus button");
+    }
+    newPost.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        view: window,
+      }),
+    );
+    // The phone layout's plus may open the story picker straight away, which
+    // settles the wait for the input; otherwise it opens a menu with Story.
+    const story = await find(
+      () =>
+        !inputWaiter ||
+        [...document.querySelectorAll(CONTROL)].find((control) =>
+          /^\s*story\s*$/i.test(control.textContent),
+        ),
+      30,
+    );
+    if (story === true) {
+      return;
+    }
+    if (!story) {
+      throw new Error("could not find Instagram's Story option");
+    }
+    story.click();
+  }
+
+  // Puts "Add to story" just left of the Save button of each post in the
+  // feed, which sits at the right end of the post's actions.
+  function addStoryButtons() {
+    for (const save of document.querySelectorAll(
+      'article svg[aria-label="Save"], article svg[aria-label="Remove"]',
+    )) {
+      const article = save.closest("article");
+      const control = save.closest(CONTROL);
+      const share = article.querySelector('svg[aria-label="Share"]');
+      if (!control || !share || article.querySelector("[data-ig-plus-story]")) {
+        continue;
+      }
+      // The part of the action row that holds Save, which Instagram pushes to
+      // the right; the button goes in it, laid out in a row.
+      let group = control;
+      while (!group.parentElement.contains(share)) {
+        group = group.parentElement;
+      }
+      const shortcode = [...article.querySelectorAll("a[href]")]
+        .map((link) => new URL(link.href).pathname.match(POST_PATH)?.[1])
+        .find(Boolean);
+      if (!shortcode) {
+        continue;
+      }
+      loadFont();
+      const host = element("span");
+      host.dataset.igPlusStory = "";
+      host.style.cssText =
+        "display: inline-flex; align-items: center; margin-right: 12px; position: relative; top: -3px;";
+      Object.assign(group.style, { display: "flex", alignItems: "center" });
+      const root = host.attachShadow({ mode: "closed" });
+      root.adoptedStyleSheets = [styles];
+      const button = element("button", {
+        className: "primary story-button",
+        textContent: "Add to story",
+      });
+      button.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showCamera(null, shortcode);
+      };
+      root.append(button);
+      group.prepend(host);
+    }
+  }
 
   // Webcams are landscape, and Instagram crops anything that is not 9:16.
   const STORY = { width: 1080, height: 1920 };
@@ -212,6 +394,37 @@
       overflow: hidden;
       border-radius: 14px;
       background: #000;
+      container-type: size;
+    }
+    /* Phones taller than 9:16 fill the screen with a story, cutting about 9%
+       from each side. */
+    .guide {
+      position: absolute;
+      inset: 0;
+      width: min(100cqw, 100cqh * 9 / 16);
+      height: min(100cqh, 100cqw * 16 / 9);
+      margin: auto;
+      pointer-events: none;
+    }
+    .guide::before,
+    .guide::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 9%;
+      background: rgb(0 0 0 / 0.35);
+    }
+    .guide::before {
+      left: 0;
+      border-right: 1px dashed rgb(255 255 255 / 0.6);
+    }
+    .guide::after {
+      right: 0;
+      border-left: 1px dashed rgb(255 255 255 / 0.6);
+    }
+    canvas[hidden] ~ .guide {
+      display: none;
     }
     video,
     canvas {
@@ -244,6 +457,21 @@
       font-weight: 600;
       text-align: center;
     }
+    .link {
+      padding: 12px 16px 0;
+    }
+    .story-button {
+      padding: 4px 12px;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .source {
+      position: fixed;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
     .controls {
       display: flex;
       flex-direction: column;
@@ -261,7 +489,8 @@
       flex: 1;
       accent-color: var(--accent);
     }
-    textarea {
+    textarea,
+    input[type="text"] {
       padding: 8px 12px;
       border: 1px solid var(--border);
       border-radius: 11px;
@@ -271,7 +500,12 @@
       font-size: 14px;
       resize: none;
     }
-    textarea::placeholder {
+    input[type="text"] {
+      flex: 1;
+      min-width: 0;
+    }
+    textarea::placeholder,
+    input[type="text"]::placeholder {
       color: var(--text-muted);
     }
     :focus-visible {
@@ -684,6 +918,296 @@
     context.restore();
   }
 
+  // Shortcodes are the media ID in base 64.
+  const SHORTCODE_ALPHABET =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  function shortcodeMediaId(shortcode) {
+    let id = 0n;
+    for (const char of shortcode.slice(0, 11)) {
+      id = id * 64n + BigInt(SHORTCODE_ALPHABET.indexOf(char));
+    }
+    return id.toString();
+  }
+
+  function shortcodeOf(value) {
+    const trimmed = value.trim();
+    if (/^[\w-]{5,}$/.test(trimmed)) {
+      return trimmed;
+    }
+    try {
+      return new URL(trimmed, location.href).pathname.match(POST_PATH)?.[1];
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Instagram's API wants the web app's ID, which its pages carry.
+  function appId() {
+    return (
+      document.documentElement.innerHTML.match(/"APP_ID":"(\d+)"/)?.[1] ??
+      "936619743392459"
+    );
+  }
+
+  // Instagram's own requests carry headers that identify the web app and the
+  // session. Video stories go out without Instagram's composer, so they reuse
+  // the latest of each.
+  const SESSION_HEADER =
+    /^x-(csrftoken|ig-app-id|asbd-id|instagram-ajax|ig-www-claim|web-device-id|web-session-id|mid)$/i;
+  const sessionHeaders = {};
+  const nativeSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+  XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+    if (SESSION_HEADER.test(name)) {
+      sessionHeaders[name.toLowerCase()] = value;
+    }
+    return nativeSetRequestHeader.apply(this, arguments);
+  };
+  function apiHeaders() {
+    return {
+      "x-csrftoken": document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1],
+      "x-ig-app-id": appId(),
+      "x-requested-with": "XMLHttpRequest",
+      ...sessionHeaders,
+    };
+  }
+
+  async function failure(response) {
+    const text = await response.text();
+    let detail = text.slice(0, 200);
+    try {
+      detail = JSON.parse(text).message ?? detail;
+    } catch {}
+    return new Error(`Instagram answered ${response.status}: ${detail}`);
+  }
+
+  // Instagram's phone layout only takes photos for stories, so video stories
+  // go up the way its desktop site uploads videos for posts, then share with
+  // the phone apps' story video fields. `handOff` tells audience.js what to
+  // add to the share, and runs before each attempt.
+  async function postVideoStory(file, { width, height, durationMs }, handOff) {
+    const uploadId = String(Date.now());
+    const {
+      "x-ig-www-claim": _claim,
+      "x-web-device-id": _device,
+      ...headers
+    } = apiHeaders();
+    const upload = await fetch(
+      `https://i.instagram.com/rupload_igvideo/fb_uploader_${uploadId}`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          ...headers,
+          Offset: "0",
+          "X-Entity-Length": String(file.size),
+          "X-Entity-Name": `fb_uploader_${uploadId}`,
+          "X-Instagram-Rupload-Params": JSON.stringify({
+            "client-passthrough": "1",
+            is_unified_video: "0",
+            extract_cover_frame: "1",
+            for_album: false,
+            is_sidecar: "0",
+            media_type: 2,
+            upload_id: uploadId,
+            upload_media_duration_ms: durationMs,
+            upload_media_height: height,
+            upload_media_width: width,
+            video_format: file.type,
+            video_transform: null,
+          }),
+        },
+        body: file,
+      },
+    );
+    if (!upload.ok) {
+      throw await failure(upload);
+    }
+    const seconds = String(durationMs / 1000);
+    const body = new URLSearchParams({
+      upload_id: uploadId,
+      caption: "",
+      configure_mode: "1",
+      source_type: "4",
+      length: seconds,
+      clips: JSON.stringify([{ length: seconds, source_type: "4" }]),
+      poster_frame_index: "0",
+      audio_muted: "false",
+      filter_type: "0",
+      video_result: "",
+    }).toString();
+    // Instagram processes the video after the upload and says so until done.
+    for (let attempt = 0; attempt < 30; attempt++) {
+      handOff();
+      const response = await fetch(
+        "/api/v1/media/configure_to_story/?video=1",
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            ...apiHeaders(),
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body,
+        },
+      );
+      if (response.status === 202) {
+        await wait(2000);
+        continue;
+      }
+      if (!response.ok) {
+        const error = await failure(response);
+        if (/transcode/i.test(error.message)) {
+          await wait(2000);
+          continue;
+        }
+        throw error;
+      }
+      return;
+    }
+    throw new Error("Instagram did not finish processing the video");
+  }
+
+  async function loadImage(url) {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Instagram answered ${response.status}`);
+    }
+    return createImageBitmap(await response.blob());
+  }
+
+  // Everything needed to draw a post's card: its first photo or the cover of
+  // its video, and who posted it. A video is only needed once Done records
+  // it, so it downloads meanwhile, to a promised blob URL.
+  async function loadPost(shortcode) {
+    const response = await fetch(
+      `/api/v1/media/${shortcodeMediaId(shortcode)}/info/`,
+      { headers: { "X-IG-App-ID": appId() } },
+    );
+    if (!response.ok) {
+      throw new Error(`Instagram answered ${response.status}`);
+    }
+    const [item] = (await response.json()).items ?? [];
+    if (!item) {
+      throw new Error("Instagram did not return the post");
+    }
+    const media = item.carousel_media?.[0] ?? item;
+    const [videoVersion] = media.video_versions ?? [];
+    const video =
+      videoVersion &&
+      fetch(videoVersion.url)
+        .then((result) => result.blob())
+        .then((blob) => URL.createObjectURL(blob));
+    // Reported when Done waits for it, not as an unhandled rejection.
+    video?.catch(() => {});
+    const [image, avatar] = await Promise.all([
+      loadImage(media.image_versions2.candidates[0].url),
+      loadImage(item.user.profile_pic_url).catch(() => null),
+    ]);
+    return {
+      // The ID in JSON is a string; pk is a number too large to be exact.
+      mediaId: String(item.id).split("_")[0],
+      username: item.user.username,
+      image,
+      avatar,
+      video,
+      duration: media.video_duration ?? 0,
+    };
+  }
+
+  // A post's card is a white rounded card with the poster above the photo,
+  // like the phone apps draw, centered and then scaled and moved by the
+  // editor's photo tool.
+  const CARD = { width: 864, maxMedia: 1152, header: 112, radius: 36 };
+  function cardRect({ post, zoom, x, y }) {
+    const aspect = post.image.height / post.image.width;
+    const media = Math.min(CARD.width * aspect, CARD.maxMedia) * zoom;
+    const width = (media / aspect) | 0;
+    const header = CARD.header * zoom;
+    const height = header + media;
+    return {
+      left: (STORY.width - width) / 2 + x,
+      top: (STORY.height - height) / 2 + y,
+      width,
+      height,
+      header,
+      scale: zoom,
+    };
+  }
+
+  function drawCard(context, base, frame) {
+    const { left, top, width, height, header, scale } = cardRect(base);
+    const radius = CARD.radius * scale;
+    context.drawImage(base.backdrop, 0, 0);
+    context.save();
+    context.shadowColor = "rgba(0, 0, 0, 0.35)";
+    context.shadowBlur = 40 * scale;
+    context.fillStyle = "#fff";
+    context.beginPath();
+    context.roundRect(left, top, width, height, radius);
+    context.fill();
+    context.restore();
+
+    context.save();
+    context.beginPath();
+    context.roundRect(left, top, width, height, radius);
+    context.clip();
+    context.drawImage(frame, left, top + header, width, height - header);
+    context.restore();
+
+    const avatarSize = 64 * scale;
+    const avatarX = left + 28 * scale;
+    const avatarY = top + (header - avatarSize) / 2;
+    if (base.post.avatar) {
+      context.save();
+      context.beginPath();
+      context.arc(
+        avatarX + avatarSize / 2,
+        avatarY + avatarSize / 2,
+        avatarSize / 2,
+        0,
+        Math.PI * 2,
+      );
+      context.clip();
+      context.drawImage(
+        base.post.avatar,
+        avatarX,
+        avatarY,
+        avatarSize,
+        avatarSize,
+      );
+      context.restore();
+    }
+    context.fillStyle = "#262626";
+    context.font = `700 ${34 * scale}px system-ui, sans-serif`;
+    context.textBaseline = "middle";
+    context.fillText(
+      base.post.username,
+      avatarX + avatarSize + 20 * scale,
+      top + header / 2,
+      width - avatarSize - 76 * scale,
+    );
+  }
+
+  // Where the card sits, as fractions of the story, for Instagram's tap area.
+  function cardSticker(base) {
+    const { left, top, width, height } = cardRect(base);
+    return {
+      x: (left + width / 2) / STORY.width,
+      y: (top + height / 2) / STORY.height,
+      width: width / STORY.width,
+      height: height / STORY.height,
+    };
+  }
+
+  // Instagram takes MP4 uploads; Firefox can only record WebM.
+  const RECORDING_TYPES = [
+    "video/mp4;codecs=avc1.42E01F,opus",
+    "video/mp4",
+    "video/webm;codecs=vp9,opus",
+    "video/webm",
+  ];
+  const MAX_VIDEO_SECONDS = 60;
+
   // Maps a pointer position onto the story canvas, which is letterboxed by
   // object-fit.
   function storyPoint(canvas, event) {
@@ -771,22 +1295,26 @@
     unknown:
       "Instagram did not confirm close friends. Check the story's ring before anyone sees it.",
     blocked: "Not shared: close friends could not be applied.",
+    "blocked-facebook":
+      "Not shared: sharing to Facebook could not be turned off.",
+    shared: "Shared to your story.",
   };
 
   // audience.js reports how a close friends share went.
+  const SUCCESS = new Set(["close-friends", "shared"]);
   window.addEventListener("ig-plus:shared", (event) => {
     const { status } = event.detail;
     const host = element("div");
     const root = host.attachShadow({ mode: "closed" });
     root.adoptedStyleSheets = [styles];
     const notice = element("div", {
-      className: status === "close-friends" ? "notice" : "notice warning",
+      className: SUCCESS.has(status) ? "notice" : "notice warning",
       textContent: SHARE_NOTICES[status],
       onclick: () => host.remove(),
     });
     root.append(notice);
     document.documentElement.append(host);
-    if (status === "close-friends") {
+    if (SUCCESS.has(status)) {
       setTimeout(() => host.remove(), 5000);
     }
   });
@@ -836,7 +1364,9 @@
     }
   }
 
-  async function showCamera(input) {
+  // Opens the camera for Instagram's story file input, or, from the feed's
+  // "Add to story", the editor with that post before the input exists.
+  async function showCamera(input, shortcode) {
     loadFont();
     const host = element("div");
     const root = host.attachShadow({ mode: "closed" });
@@ -850,7 +1380,12 @@
     const video = element("video", { ...videoProperties, className: "main" });
     const review = element("canvas", { ...STORY, hidden: true });
     const stage = element("div", { className: "stage" });
-    stage.append(backdrop, video, review);
+    stage.append(
+      backdrop,
+      video,
+      review,
+      element("div", { className: "guide" }),
+    );
 
     const message = element("div", {
       className: "message",
@@ -966,6 +1501,17 @@
     });
     const choose = element("button", { textContent: "Choose file" });
     const googlePhotos = element("button", { textContent: "Google Photos" });
+    const sharePost = element("button", { textContent: "Share post" });
+    const linkInput = element("input", {
+      type: "text",
+      placeholder: "Link to a post or reel",
+    });
+    const openLink = element("button", {
+      className: "primary",
+      textContent: "Open",
+    });
+    const linkRow = element("div", { className: "row link", hidden: true });
+    linkRow.append(linkInput, openLink);
     const colors = element("button", { textContent: "Colors" });
     const framing = element("button", { textContent: "Crop" });
     const take = element("button", {
@@ -974,35 +1520,71 @@
       disabled: true,
     });
     const cameraBar = element("div", { className: "bar" });
-    cameraBar.append(cancel, choose, googlePhotos, colors, framing, take);
+    cameraBar.append(
+      cancel,
+      choose,
+      googlePhotos,
+      sharePost,
+      colors,
+      framing,
+      take,
+    );
 
     const back = element("button");
     const done = element("button", {
       className: "primary",
       textContent: "Done",
     });
-    // Moves to whichever bar is showing, since videos skip the editor.
-    const audienceInput = element("input", { type: "checkbox" });
-    const audienceBox = element("span", { className: "box" });
-    audienceBox.append(icon("check"));
-    const audienceToggle = element("label", { className: "check" });
-    audienceToggle.append(
-      audienceInput,
-      audienceBox,
-      element("span", { textContent: "Close friends" }),
-    );
-    cameraBar.insertBefore(audienceToggle, take);
+    const checkbox = (label, checked) => {
+      const input = element("input", { type: "checkbox", checked });
+      const box = element("span", { className: "box" });
+      box.append(icon("check"));
+      const toggle = element("label", { className: "check" });
+      toggle.append(input, box, element("span", { textContent: label }));
+      return { input, toggle };
+    };
+    // Sharing settings move to whichever bar is showing, since videos skip
+    // the editor.
+    const audience = checkbox("Close friends", false);
+    // Instagram cross-posts to Facebook when the account is set to, and its
+    // web composer cannot turn that off for one story.
+    const facebook = checkbox("Facebook", true);
+    // Close friends stories never go to Facebook.
+    let facebookAvailable = true;
+    const updateFacebook = () => {
+      const allowed = facebookAvailable && !audience.input.checked;
+      facebook.input.disabled = !allowed;
+      facebook.input.checked = allowed;
+    };
+    const setFacebookAvailable = (available) => {
+      facebookAvailable = available;
+      updateFacebook();
+    };
+    audience.input.onchange = updateFacebook;
+    const sharing = element("span", { className: "row" });
+    sharing.append(audience.toggle, facebook.toggle);
+    cameraBar.insertBefore(sharing, take);
     const reviewBar = element("div", { className: "bar", hidden: true });
     reviewBar.append(back, done);
 
     const overlay = element("div", { className: "overlay" });
-    overlay.append(stage, message, swatches, controls, cameraBar, reviewBar);
+    overlay.append(
+      stage,
+      message,
+      linkRow,
+      swatches,
+      controls,
+      cameraBar,
+      reviewBar,
+    );
     root.append(overlay, fileInput);
     document.documentElement.append(host);
 
     let stream;
-    // Either { colors } or { image, zoom, x, y }.
+    // Either { colors }, { image, zoom, x, y }, or { post, zoom, x, y }.
     let base;
+    // Set while Done makes and hands off the story.
+    let busy = false;
     let tool = "text";
     let lastPoint;
     const brush = { color: BRUSH_COLORS[0], size: 16 };
@@ -1016,10 +1598,13 @@
       font: 0,
     };
 
-    const draw = () => {
+    // A shared video's card shows its cover frame until it records.
+    const draw = (frame) => {
       const context = review.getContext("2d");
       if (base.colors) {
         drawBackground(context, base.colors);
+      } else if (base.post) {
+        drawCard(context, base, frame ?? base.post.image);
       } else {
         drawPhoto(context, base);
       }
@@ -1048,6 +1633,7 @@
     // "camera" shows the live view; "photo" and "colors" are the editor.
     const setMode = (mode, backLabel = "Back") => {
       const editing = mode !== "camera";
+      linkRow.hidden = true;
       backdrop.hidden = video.hidden = cameraBar.hidden = editing;
       review.hidden = controls.hidden = reviewBar.hidden = !editing;
       message.hidden = editing || !message.textContent;
@@ -1055,7 +1641,7 @@
       toolButtons.photo.hidden = mode !== "photo";
       back.textContent = backLabel;
       const bar = editing ? reviewBar : cameraBar;
-      bar.insertBefore(audienceToggle, bar.lastElementChild);
+      bar.insertBefore(sharing, bar.lastElementChild);
     };
     const setTool = (name) => {
       tool = name;
@@ -1081,34 +1667,197 @@
       zoomInput.value = base.zoom;
       render();
     };
+    const releasePost = () => {
+      base?.post?.video?.then(URL.revokeObjectURL, () => {});
+    };
     const editPhoto = (image, fill, backLabel) => {
+      setFacebookAvailable(true);
       const fillZoom = fitScale(image, "cover") / fitScale(image, "contain");
       zoomInput.max = Math.max(5, fillZoom);
+      toolButtons.photo.textContent = "Photo";
+      releasePost();
       base = { image, backdrop: blurredBackdrop(image), zoom: 1, x: 0, y: 0 };
       strokes.length = 0;
       setZoom(fill ? fillZoom : 1);
       setTool("photo");
       setMode("photo", backLabel);
     };
+    const editPost = (post) => {
+      done.disabled = false;
+      zoomInput.max = 1.2;
+      toolButtons.photo.textContent = "Post";
+      releasePost();
+      base = {
+        post,
+        backdrop: blurredBackdrop(post.image),
+        zoom: 1,
+        x: 0,
+        y: 0,
+      };
+      strokes.length = 0;
+      setZoom(1);
+      setTool("photo");
+      setMode("photo", input ? "Back" : "Cancel");
+      // Video stories skip Instagram's composer, which is what knows the
+      // Facebook account to cross-post to.
+      setFacebookAvailable(!post.video);
+      if (post.video) {
+        const seconds = Math.ceil(Math.min(post.duration, MAX_VIDEO_SECONDS));
+        showMessage(
+          `The video plays in the story, without going to Facebook. Done records it, which takes ${seconds} seconds.`,
+        );
+        message.hidden = false;
+      }
+    };
     const pickBackground = (swatch, background) => {
       swatchButtons.forEach((button) =>
         button.classList.toggle("selected", button === swatch),
       );
+      releasePost();
+      setFacebookAvailable(true);
       base = { colors: background };
       render();
     };
     const close = () => {
       stream?.getTracks().forEach((track) => track.stop());
+      releasePost();
       host.remove();
     };
-    const handOff = (file) => {
+    // Resolves to whether Instagram took the file.
+    const handOff = async (file) => {
+      const reshare = base?.post
+        ? { mediaId: base.post.mediaId, card: cardSticker(base) }
+        : null;
+      const closeFriends = audience.input.checked;
+      const skipFacebook = !facebook.input.checked;
+      const tellAudience = () =>
+        window.dispatchEvent(
+          new CustomEvent("ig-plus:handoff", {
+            detail: { closeFriends, skipFacebook, reshare },
+          }),
+        );
+      if (file.type.startsWith("video/") && base?.post) {
+        showMessage("Uploading the video...");
+        try {
+          await postVideoStory(
+            file,
+            {
+              ...STORY,
+              durationMs: Math.round(
+                Math.min(base.post.duration, MAX_VIDEO_SECONDS) * 1000,
+              ),
+            },
+            tellAudience,
+          );
+        } catch (error) {
+          showMessage(`Could not post: ${error.message}`);
+          return false;
+        }
+        close();
+        // audience.js reports close friends shares itself.
+        if (!closeFriends) {
+          window.dispatchEvent(
+            new CustomEvent("ig-plus:shared", { detail: { status: "shared" } }),
+          );
+        }
+        return true;
+      }
+      let target = input;
+      if (!target) {
+        showMessage("Opening Instagram's story composer...");
+        try {
+          target = await requestStoryInput();
+        } catch (error) {
+          showMessage(`Could not post: ${error.message}`);
+          return false;
+        }
+      }
+      if (!accepts(target, file)) {
+        showMessage(
+          `Instagram's web composer does not take ${file.type || file.name} for stories. It takes: ${target.accept}`,
+        );
+        return false;
+      }
       close();
-      attach(input, file);
-      const closeFriends = audienceInput.checked;
-      window.dispatchEvent(
-        new CustomEvent("ig-plus:handoff", { detail: { closeFriends } }),
-      );
+      attach(target, file);
+      tellAudience();
       showDiscard(closeFriends);
+      return true;
+    };
+
+    // Plays the shared video once into its card and records the story with
+    // the video's sound.
+    const recordVideo = async (audio) => {
+      const type = RECORDING_TYPES.find((candidate) =>
+        MediaRecorder.isTypeSupported(candidate),
+      );
+      showMessage("Downloading the video...");
+      let url;
+      try {
+        url = await base.post.video;
+      } catch (error) {
+        audio.close();
+        throw new Error(`the video did not download: ${error.message}`);
+      }
+      const source = element("video", {
+        src: url,
+        playsInline: true,
+        className: "source",
+      });
+      const sound = audio.createMediaStreamDestination();
+      audio.createMediaElementSource(source).connect(sound);
+      const recorder = new MediaRecorder(
+        new MediaStream([
+          ...review.captureStream(30).getVideoTracks(),
+          ...sound.stream.getAudioTracks(),
+        ]),
+        { mimeType: type, videoBitsPerSecond: 8_000_000 },
+      );
+      const chunks = [];
+      recorder.ondataavailable = (event) => chunks.push(event.data);
+      const stop = () => {
+        if (recorder.state === "recording") {
+          recorder.stop();
+        }
+      };
+      const limit = Math.min(base.post.duration || Infinity, MAX_VIDEO_SECONDS);
+      // A timer rather than animation frames, which stall when the window is
+      // covered.
+      let timer;
+      const paint = () => {
+        draw(source);
+        if (source.ended || source.currentTime >= limit) {
+          stop();
+          return;
+        }
+        showMessage(
+          `Recording the video: ${Math.floor(source.currentTime)} of ${Math.ceil(limit)} seconds.`,
+        );
+      };
+      return new Promise((resolve, reject) => {
+        recorder.onstop = () => {
+          clearInterval(timer);
+          source.pause();
+          source.remove();
+          audio.close();
+          const fileType = type.split(";")[0];
+          const extension = fileType === "video/mp4" ? "mp4" : "webm";
+          resolve(
+            new File(chunks, `story-${Date.now()}.${extension}`, {
+              type: fileType,
+            }),
+          );
+        };
+        source.onended = stop;
+        source.onerror = () => reject(new Error("the video would not play"));
+        // Chrome will not play a video outside the document.
+        root.append(source);
+        draw();
+        recorder.start();
+        source.play().then(() => {
+          timer = setInterval(paint, 1000 / 30);
+        }, reject);
+      });
     };
 
     const openFile = async (file) => {
@@ -1137,6 +1886,44 @@
       fileInput.value = "";
       if (file) {
         openFile(file);
+      }
+    };
+    sharePost.onclick = () => {
+      linkRow.hidden = !linkRow.hidden;
+      if (!linkRow.hidden) {
+        const last = sessionStorage.getItem("ig-plus:post");
+        linkInput.value ||= last ? `https://www.instagram.com/p/${last}/` : "";
+        linkInput.focus();
+        linkInput.select();
+      }
+    };
+    linkInput.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key === "Enter") {
+        openLink.click();
+      }
+    });
+    const openPost = async (shortcode) => {
+      openLink.disabled = true;
+      showMessage("Loading the post...");
+      try {
+        const post = await loadPost(shortcode);
+        if (host.isConnected) {
+          showMessage("");
+          editPost(post);
+        }
+      } catch (error) {
+        showMessage(`Could not load the post: ${error.message}`);
+      } finally {
+        openLink.disabled = false;
+      }
+    };
+    openLink.onclick = () => {
+      const shortcode = shortcodeOf(linkInput.value);
+      if (shortcode) {
+        openPost(shortcode);
+      } else {
+        showMessage("That does not look like a link to a post or reel.");
       }
     };
     googlePhotos.onclick = async () => {
@@ -1173,17 +1960,38 @@
         stage.classList.contains("fill"),
         "Retake",
       );
-    back.onclick = () => setMode("camera");
-    done.onclick = () => {
-      flush();
-      review.toBlob(
-        (blob) =>
-          handOff(
-            new File([blob], `story-${Date.now()}.jpg`, { type: "image/jpeg" }),
-          ),
-        "image/jpeg",
-        0.92,
+    back.onclick = () => (input ? setMode("camera") : close());
+    const snapshot = () =>
+      new Promise((resolve) =>
+        review.toBlob(
+          (blob) =>
+            resolve(
+              new File([blob], `story-${Date.now()}.jpg`, {
+                type: "image/jpeg",
+              }),
+            ),
+          "image/jpeg",
+          0.92,
+        ),
       );
+    done.onclick = async () => {
+      if (busy) {
+        return;
+      }
+      flush();
+      busy = done.disabled = back.disabled = controls.inert = true;
+      try {
+        // Sound needs an audio context made within the click.
+        await handOff(
+          await (base.post?.video
+            ? recordVideo(new AudioContext())
+            : snapshot()),
+        );
+      } catch (error) {
+        showMessage(`Could not make the story: ${error.message}`);
+      } finally {
+        busy = done.disabled = back.disabled = controls.inert = false;
+      }
     };
 
     const updateArrows = () => {
@@ -1241,7 +2049,7 @@
     const drag = (point) => {
       if (tool === "brush") {
         strokes.at(-1).points.push(point);
-      } else if (tool === "photo" && base.image) {
+      } else if (tool === "photo" && (base.image || base.post)) {
         base.x += point.x - lastPoint.x;
         base.y += point.y - lastPoint.y;
       } else {
@@ -1266,7 +2074,7 @@
     review.addEventListener(
       "wheel",
       (event) => {
-        if (base.image) {
+        if (base.image || base.post) {
           event.preventDefault();
           setZoom(base.zoom * Math.exp(-event.deltaY * 0.002));
         }
@@ -1274,6 +2082,15 @@
       { passive: false },
     );
 
+    if (!input) {
+      setMode("photo", "Cancel");
+      // editPost shows the canvas once the post loads.
+      review.hidden = controls.hidden = true;
+      done.disabled = true;
+      openPost(shortcode);
+      message.hidden = false;
+      return;
+    }
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -1292,4 +2109,17 @@
     showMessage("");
     take.disabled = false;
   }
+
+  // Instagram renders the feed as it scrolls, so look again whenever it
+  // changes the page, at most once a frame.
+  let queued = false;
+  new MutationObserver(() => {
+    if (!queued) {
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        addStoryButtons();
+      });
+    }
+  }).observe(document.documentElement, { childList: true, subtree: true });
 })();

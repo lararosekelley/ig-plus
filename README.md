@@ -1,8 +1,9 @@
 # IG Plus
 
 Browser extension for Instagram on Chrome, Firefox, and Firefox for Android. It
-posts stories from desktop, with an editor for photos, text, and drawing and
-an option to share to close friends. It can also hide the home feed and Reels.
+posts stories from desktop, with an editor for photos, text, and drawing, and
+shares posts and reels from the feed to a story. Stories can go to close friends
+or skip Facebook. It can also hide the home feed and Reels.
 
 ## Install
 
@@ -95,10 +96,27 @@ editor has neither. "Done" hands the JPEG to Instagram as if it were
 picked from disk. The browser asks for camera access for Instagram the first
 time.
 
-## Close friends
+Phones taller than 9:16 fill the screen with a story, cutting about 9% from each
+side, so the editor dims those edges. Keep text inside the dashed lines.
 
-Instagram's mobile web composer always shares to everyone. With "Close friends"
-on, the extension adds `audience=besties` to the composer's
+## Sharing posts
+
+In a phone tab, photo and video posts in the home feed get an "Add to story"
+button beside Save. The editor can also open any post from its link with "Share
+post". It draws the post as a card on a blurred backdrop, and the story links
+to the post the way the phone apps' reshares do.
+
+A video post is recorded into the story as it plays, sound included, for up to
+60 seconds. Instagram's mobile web composer only takes images, so the extension
+uploads the recording itself. Video stories are not cross-posted to Facebook.
+
+## Close friends and Facebook
+
+Instagram's mobile web composer always shares to everyone, and to Facebook when
+the account is linked to it. Unchecking "Facebook" in the editor drops the
+cross-post for that story.
+
+With "Close friends" on, the extension adds `audience=besties` to the composer's
 `configure_to_story` request, the setting the phone apps send, and drops the
 Facebook cross-post the web composer would otherwise add. Instagram's response
 says which audience it applied, and a notice reports it. If the request cannot
