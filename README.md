@@ -11,9 +11,11 @@ changes its site often, so any part of it may stop working without notice.
 
 ### Chrome
 
-1. Download this `ig-plus` folder and keep it somewhere it can stay.
+1. Download `ig-plus-chrome-<version>.zip` from the newest
+   [release](https://github.com/lararosekelley/ig-plus/releases) and unzip it
+   somewhere it can stay.
 2. Open `chrome://extensions`, turn on "Developer mode", click "Load
-   unpacked", and choose the folder.
+   unpacked", and choose the unzipped folder.
 3. Pin IG Plus from the puzzle piece menu. Its button holds the settings and
    "Open phone window".
 
@@ -23,8 +25,8 @@ the install icon in Chrome's address bar, and tap Story there.
 ### Firefox
 
 1. Download the signed `.xpi` from the newest
-   [IG Plus release](https://github.com/lararosekelley/dotfiles/releases?q=ig-plus),
-   or sign your own (see Development). Open it in Firefox, by dragging it into
+   [release](https://github.com/lararosekelley/ig-plus/releases), or sign your
+   own (see Development). Open it in Firefox, by dragging it into
    a window or with File, Open File, and click "Add".
 2. Firefox grants site access only when asked. Open `about:addons`, then IG
    Plus, then Permissions, and allow all three sites. Reload Instagram.
@@ -107,13 +109,13 @@ document this, so it may stop working without notice.
 
 The editor and settings use the colors, shapes and type of
 [Callie](https://callieapp.org), following the system's light or dark setting.
-`fonts/` bundles Callie's Nunito under the SIL Open Font License.
+`src/fonts/` bundles Callie's Nunito under the SIL Open Font License.
 
 Text fonts come from the local machine: "Elegant" uses P052 italic and "Script"
 uses Z003, both from the URW base fonts.
 
-`icons/icon.svg` is the source of the icon. After editing it, render the PNGs
-Chrome needs from this directory:
+`src/icons/icon.svg` is the source of the icon. After editing it, render the
+PNGs Chrome needs from `src/`:
 
 ```bash
 for size in 16 32 48 128; do
@@ -125,7 +127,7 @@ done
 ## Google Photos
 
 Google Photos needs a Google sign-in through an OAuth client in a Google Cloud
-project. The clients in this folder, and the released `.xpi`, only accept the
+project. The clients in `src/manifest.json`, and the released `.xpi`, only accept the
 Google accounts their owner lists as test users. Anyone else sees "Access
 blocked" when signing in, while the rest of IG Plus works. To use Google
 Photos, ask the owner to add your account as a test user, or make your own
@@ -143,21 +145,21 @@ clients:
 Chrome:
 
 1. Create a client of type "Chrome Extension" with item ID
-   `lalkkejobicceencckpheojogphlhcmb`. The `key` in `manifest.json` gives every
-   copy of this folder that ID.
-2. Put its client ID in `oauth2.client_id` in `manifest.json`, then reload the
+   `lalkkejobicceencckpheojogphlhcmb`. The `key` in `src/manifest.json` gives every
+   unpacked copy that ID.
+2. Put its client ID in `oauth2.client_id` in `src/manifest.json`, then reload the
    extension. It signs in with the Chrome profile's Google account.
 
 Firefox, which has to be signed again:
 
-1. Change `browser_specific_settings.gecko.id` in `manifest.json` to an ID of
+1. Change `browser_specific_settings.gecko.id` in `src/manifest.json` to an ID of
    your own, such as `ig-plus@example.com`. Only the account that first signed
    an ID can sign it again.
 2. Build and load it temporarily (see Development), then run
    `browser.identity.getRedirectURL()` in the console from its "Inspect"
    button. The result is derived from the ID.
 3. Create a client of type "Web application" with that URL as its authorized
-   redirect URI, and put its client ID in `WEB_CLIENT_ID` in `background.js`.
+   redirect URI, and put its client ID in `WEB_CLIENT_ID` in `src/background.js`.
 4. Build and sign it. Firefox for Android cannot sign in to Google, so Google
    Photos is desktop only.
 
@@ -169,28 +171,32 @@ second click to confirm.
 
 ## Development
 
+Install the tools with `npm install`, which also sets up the commit hooks. Then:
+
+- `npm test` runs the unit tests in `tests/`.
+- `npm run lint` checks formatting, JavaScript, Markdown, workflows, shell
+  scripts, and the Firefox build with Mozilla's linter.
+- `npm run build` writes `dist/chrome` and `dist/firefox`, and a zip of each.
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org) with
+a scope from `commitlint.config.cjs`. Releases are tagged from `main`; see
+[RELEASING.md](RELEASING.md).
+
 ### Chrome
 
-Load this directory unpacked as above. After editing files, click the reload
-icon on the extension's card, then reopen the app or phone window.
+Load `src/` unpacked as above. After editing files, click the reload icon on
+the extension's card, then reopen the app or phone window.
 
-For the Chrome Web Store, `just build-ig-plus-chrome` writes
-`target/ig-plus-chrome.zip` without the manifest `key`. The store assigns its
-own item ID, so Google Photos there needs a Chrome Extension client for that
-ID in `oauth2.client_id`.
+The Chrome Web Store build in `dist/chrome` drops the manifest `key`. The store
+assigns its own item ID, so Google Photos there needs a Chrome Extension client
+for that ID, passed to the build as `IG_PLUS_CHROME_CLIENT_ID`.
 
 ### Firefox
 
-Chrome and Firefox need different manifests, so Firefox loads a build of this
-directory. From the repository root:
-
-```bash
-just build-ig-plus-firefox
-```
-
+Chrome and Firefox need different manifests, so Firefox loads `dist/firefox`.
 For a session, open `about:debugging#/runtime/this-firefox`, click "Load
-Temporary Add-on", and choose `target/ig-plus-firefox/manifest.json`. Firefox
-removes it on restart. Rebuild and reload it after editing files.
+Temporary Add-on", and choose `dist/firefox/manifest.json`. Firefox removes it
+on restart. Rebuild and reload it after editing files.
 
 A Flatpak browser such as Zen can read only the one file picked, so it loads
 an empty popup and no background script. Copy the build somewhere its sandbox
@@ -201,16 +207,15 @@ Firefox for Android, connect the phone over adb, and run:
 
 ```bash
 npx web-ext run -t firefox-android --android-device <device-id> \
-  --firefox-apk org.mozilla.firefox --source-dir target/ig-plus-firefox
+  --firefox-apk org.mozilla.firefox --source-dir dist/firefox
 ```
 
-To make an `.xpi` anyone can install, sign the build as an unlisted add-on with
+Releases are signed as unlisted add-ons on AMO, which makes an `.xpi` anyone can
+install without listing it. To sign a build of your own, use
 [web-ext](https://extensionworkshop.com/documentation/develop/web-ext-command-reference/#web-ext-sign)
-and AMO API keys. The signed file lands in `web-ext-artifacts/` and works on
-desktop and Android. Unlisted add-ons do not update themselves, so sign each
-new version and attach it to a release tagged `ig-plus@v<version>`:
+with AMO API keys:
 
 ```bash
-npx web-ext sign --channel=unlisted --source-dir target/ig-plus-firefox \
+npx web-ext sign --channel=unlisted --source-dir dist/firefox \
   --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET"
 ```

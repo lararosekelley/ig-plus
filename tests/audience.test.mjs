@@ -4,7 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 const source = await readFile(
-  new URL("../../extensions/ig-plus/audience.js", import.meta.url),
+  new URL("../src/audience.js", import.meta.url),
   "utf8",
 );
 

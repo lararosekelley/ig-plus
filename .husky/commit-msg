@@ -1,0 +1,2 @@
+# shellcheck shell=sh
+npx --no -- commitlint --edit "$1"

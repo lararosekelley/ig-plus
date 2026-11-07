@@ -1,0 +1,4 @@
+# shellcheck shell=sh
+npm run lint:js
+npm run lint:md
+npm test

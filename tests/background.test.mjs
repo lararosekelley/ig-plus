@@ -4,10 +4,7 @@ import test from "node:test";
 import vm from "node:vm";
 
 const read = (name) =>
-  readFile(
-    new URL(`../../extensions/ig-plus/${name}`, import.meta.url),
-    "utf8",
-  );
+  readFile(new URL(`../src/${name}`, import.meta.url), "utf8");
 
 // background.js only registers listeners at load, so every event is a no-op.
 const events = new Proxy({}, { get: () => ({ addListener() {} }) });

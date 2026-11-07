@@ -1,0 +1,28 @@
+{
+  "name": "ig-plus",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare": "husky",
+    "build": "node scripts/build.mjs",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "format": "oxfmt \"**/*.{js,mjs}\"",
+    "lint": "npm run lint:js && npm run lint:md && npm run lint:ext && npm run lint:actions && npm run lint:sh",
+    "lint:js": "oxfmt --check \"**/*.{js,mjs}\" && oxlint",
+    "lint:md": "markdownlint-cli2",
+    "lint:ext": "npm run build && web-ext lint --source-dir dist/firefox --self-hosted",
+    "lint:actions": "actionlint",
+    "lint:sh": "shellcheck scripts/*.sh .husky/commit-msg .husky/pre-commit",
+    "release": "scripts/release.sh"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "chrome-webstore-upload-cli": "^4.0.2",
+    "husky": "^9.1.7",
+    "markdownlint-cli2": "^0.24.0",
+    "oxfmt": "^0.77.0",
+    "oxlint": "^1.92.0",
+    "web-ext": "^10.8.0"
+  }
+}
