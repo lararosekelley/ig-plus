@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: commitlint needs every commit in the range to lint.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Lint commit messages
+        uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: commitlint.config.cjs
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint JavaScript
+        run: npm run lint:js
+
+      - name: Lint markdown
+        run: npm run lint:md
+
+      # Mozilla's linter, the one AMO runs on every submission.
+      - name: Lint the Firefox build
+        run: npm run lint:ext
+
+      # Pinned, and fetched from the upstream release rather than a wrapper action.
+      - name: Install actionlint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          gh release download "v$ACTIONLINT_VERSION" --repo rhysd/actionlint \
+            --pattern "actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            --output actionlint.tar.gz
+          tar -xzf actionlint.tar.gz actionlint
+          sudo install -m 0755 actionlint /usr/local/bin/actionlint
+
+      # shellcheck is preinstalled on ubuntu-latest, so actionlint also checks
+      # the shell inside every `run:` block.
+      - name: Lint workflows
+        run: npm run lint:actions
+
+      - name: Lint shell
+        run: npm run lint:sh
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test

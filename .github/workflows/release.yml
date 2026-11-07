@@ -1,0 +1,165 @@
+name: Release
+
+# A pushed vX.Y.Z tag publishes a release: the extension is signed for Firefox
+# and attached to a GitHub release with the Chrome zip and the notes from
+# CHANGELOG.md, then uploaded to the Chrome Web Store once that listing exists.
+# Pull requests that touch the build, and runs started by hand, build the same
+# files without publishing.
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  pull_request:
+    paths:
+      - scripts/**
+      - CHANGELOG.md
+      - src/manifest.json
+      - package.json
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Work out the version
+        id: version
+        run: |
+          version="$(node -p 'require("./src/manifest.json").version')"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::$GITHUB_REF_NAME does not match manifest version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Write the notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # A tag must have its notes; a test build of an unreleased version has none.
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            scripts/release-notes.sh "$VERSION" > dist-notes.md
+          else
+            scripts/release-notes.sh "$VERSION" > dist-notes.md 2>/dev/null || echo "Test build." > dist-notes.md
+          fi
+
+      # The Chrome Web Store assigns its own item ID, so its build uses the
+      # OAuth client made for that ID once there is one.
+      - name: Build
+        env:
+          IG_PLUS_CHROME_CLIENT_ID: ${{ secrets.IG_PLUS_CHROME_CLIENT_ID }}
+        run: |
+          npm run build
+          mv dist-notes.md dist/notes.md
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: |
+            dist/notes.md
+            dist/*.zip
+          if-no-files-found: error
+
+  # Unlisted: AMO signs the file for anyone to install, without listing it.
+  firefox:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - name: Sign
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          mkdir firefox
+          unzip -q "dist/ig-plus-firefox-$VERSION.zip" -d firefox
+          npx web-ext sign --channel=unlisted --source-dir firefox --artifacts-dir signed
+          mv signed/*.xpi "ig-plus-$VERSION.xpi"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: xpi
+          path: "*.xpi"
+          if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [build, firefox]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --verify-tag --title "IG Plus $VERSION" --notes-file dist/notes.md \
+            "dist/ig-plus-$VERSION.xpi" "dist/ig-plus-chrome-$VERSION.zip"
+
+  # Submits the version for review; the store publishes it once approved.
+  chrome:
+    if: github.ref_type == 'tag' && vars.CWS_EXTENSION_ID != ''
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - name: Upload and publish
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+          EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
+          PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: npx chrome-webstore-upload --source "dist/ig-plus-chrome-$VERSION.zip"
