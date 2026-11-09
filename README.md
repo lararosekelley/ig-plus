@@ -90,7 +90,8 @@ The webcam view has four ways to start a story:
 - "Choose file" opens a picker. Images go to the editor fitted whole; videos go
   straight to Instagram.
 - "Google Photos" opens Google's picker in a popup. Photos go to the editor
-  like chosen files; videos go straight to Instagram.
+  like chosen files; videos go straight to Instagram. Firefox for Android
+  cannot sign in to Google, so it has no Google Photos button.
 - "Colors" starts from a solid or gradient background, picked from swatches.
 
 The editor composes a 1080x1920 image, filling any uncovered space with a

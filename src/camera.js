@@ -1585,7 +1585,12 @@
       textContent: "Cancel",
     });
     const choose = element("button", { textContent: "Choose file" });
-    const googlePhotos = element("button", { textContent: "Google Photos" });
+    // Firefox for Android cannot finish Google's sign-in, and real phones
+    // are the only native phone tabs.
+    const googlePhotos = element("button", {
+      textContent: "Google Photos",
+      hidden: document.documentElement.dataset.igPlusPhone === "native",
+    });
     const sharePost = element("button", { textContent: "Share post" });
     const linkInput = element("input", {
       type: "text",
