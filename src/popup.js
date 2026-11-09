@@ -2,6 +2,9 @@ const DEFAULTS = { hideFeed: true, hideReels: true };
 const message = document.getElementById("message");
 const phone = document.getElementById("phone");
 
+document.getElementById("version").textContent =
+  `v${chrome.runtime.getManifest().version}`;
+
 chrome.storage.sync.get(DEFAULTS).then((settings) => {
   for (const input of document.querySelectorAll("input[type=checkbox]")) {
     input.checked = settings[input.name];
