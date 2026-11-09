@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "IG Plus",
-  "version": "1.0.0",
-  "description": "Posts Instagram stories from desktop, and hides the home feed and Reels.",
+  "version": "1.0.2",
+  "description": "A better web experience for Instagram. Post stories from desktop, stop endless scrolling by hiding the home feed or Reels, and more.",
   "homepage_url": "https://github.com/lararosekelley/ig-plus",
   "icons": {
     "16": "icons/icon-16.png",
