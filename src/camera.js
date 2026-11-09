@@ -277,10 +277,10 @@
   const STORY = { width: 1080, height: 1920 };
 
   const TEXT_STYLES = [
-    { fill: "#fff", shadow: true },
-    { fill: "#000" },
     { fill: "#fff", box: "#000" },
     { fill: "#000", box: "#fff" },
+    { fill: "#fff", shadow: true },
+    { fill: "#000" },
   ];
 
   // One color is a solid fill; more make a diagonal gradient.
@@ -314,7 +314,7 @@
   // Instagram's own fonts are not reachable from the page, so these use fonts
   // installed locally, falling back to generic families elsewhere.
   const FONTS = [
-    { name: "Classic", font: (size) => `bold ${size}px system-ui, sans-serif` },
+    { name: "Classic", font: (size) => `500 ${size}px system-ui, sans-serif` },
     {
       name: "Elegant",
       font: (size) => `italic ${size}px P052, Palatino, serif`,
@@ -665,8 +665,27 @@
       border-color: var(--done);
       background: var(--done);
     }
-    .check input:checked + .box svg {
+    .check input:checked + .box .icon-check {
       visibility: visible;
+    }
+    /* A grey cross marks a setting that does not apply. */
+    .check:has(input:disabled) {
+      cursor: default;
+    }
+    .check:has(input:disabled) > span:last-child {
+      opacity: 0.4;
+    }
+    .check input:disabled + .box {
+      border-color: transparent;
+      background: var(--text-muted);
+      opacity: 0.5;
+    }
+    .check input:disabled + .box .icon-cross {
+      visibility: visible;
+    }
+    /* The check and the cross share the circle's one cell. */
+    .check .box svg {
+      grid-area: 1 / 1;
     }
     .check input:checked ~ span {
       color: var(--text);
@@ -737,12 +756,14 @@
     left: "M10 3.5 5.5 8l4.5 4.5",
     right: "M6 3.5 10.5 8 6 12.5",
     check: "M4 8.5 6.8 11 12 5.5",
+    cross: "M5.5 5.5l5 5m0-5-5 5",
   };
 
   function icon(name) {
     const namespace = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(namespace, "svg");
     svg.setAttribute("viewBox", "0 0 16 16");
+    svg.classList.add(`icon-${name}`);
     const path = document.createElementNS(namespace, "path");
     path.setAttribute("d", ICONS[name]);
     svg.append(path);
@@ -862,40 +883,96 @@
     });
   }
 
+  // Like Instagram's text boxes: one box per line, joined where lines meet,
+  // with rounded outer corners and curved fillets where widths step.
+  function drawTextBoxes(context, { x, top, lineHeight, widths, radius }) {
+    // Lines within a corner's width of each other share one width.
+    for (let index = 1; index < widths.length; index++) {
+      if (Math.abs(widths[index] - widths[index - 1]) < radius * 2) {
+        widths[index] = widths[index - 1] = Math.max(
+          widths[index],
+          widths[index - 1],
+        );
+      }
+    }
+    const rounded = (index, neighbor) =>
+      widths[neighbor] >= widths[index] ? 0 : radius;
+    context.beginPath();
+    widths.forEach((width, index) => {
+      if (!width) {
+        return;
+      }
+      const above = rounded(index, index - 1);
+      const below = rounded(index, index + 1);
+      context.roundRect(
+        x - width / 2,
+        top + index * lineHeight,
+        width,
+        lineHeight,
+        [above, above, below, below],
+      );
+      // Curved fillets where this line meets the next at a different width.
+      const next = widths[index + 1];
+      if (next === undefined) {
+        return;
+      }
+      const edge = index + 1;
+      const y = top + edge * lineHeight;
+      const [narrow, wide] = width < next ? [width, next] : [next, width];
+      if (!narrow || wide - narrow < radius * 2) {
+        return;
+      }
+      // Toward the narrow line: up when it is above, down when below.
+      const toward = width < next ? -1 : 1;
+      for (const side of [-1, 1]) {
+        const corner = x + (side * narrow) / 2;
+        context.moveTo(corner, y);
+        context.lineTo(corner + side * radius, y);
+        context.arc(
+          corner + side * radius,
+          y + toward * radius,
+          radius,
+          Math.atan2(-toward, 0),
+          Math.atan2(0, -side),
+          side * toward > 0,
+        );
+        context.closePath();
+      }
+    });
+    context.fill();
+  }
+
   function drawText(context, { value, x, y, size, style, font }) {
     if (!value.trim()) {
       return;
     }
     const { fill, box, shadow } = TEXT_STYLES[style];
-    const lineHeight = size * 1.25;
+    const lineHeight = size * 1.3;
     context.save();
     context.font = FONTS[font].font(size);
     context.textAlign = "center";
     context.textBaseline = "middle";
     const lines = wrapLines(context, value, STORY.width * 0.85);
-    const top = y - (lineHeight * (lines.length - 1)) / 2;
+    const top = y - (lineHeight * lines.length) / 2;
+    if (box) {
+      context.fillStyle = box;
+      drawTextBoxes(context, {
+        x,
+        top,
+        lineHeight,
+        widths: lines.map((line) =>
+          line ? context.measureText(line).width + size * 0.5 : 0,
+        ),
+        radius: size * 0.22,
+      });
+    }
+    if (shadow) {
+      context.shadowColor = "rgba(0, 0, 0, 0.6)";
+      context.shadowBlur = size * 0.2;
+    }
+    context.fillStyle = fill;
     lines.forEach((line, index) => {
-      const lineY = top + index * lineHeight;
-      if (box && line) {
-        const width = context.measureText(line).width + size * 0.6;
-        context.fillStyle = box;
-        context.beginPath();
-        context.roundRect(
-          x - width / 2,
-          lineY - lineHeight / 2,
-          width,
-          lineHeight,
-          size * 0.25,
-        );
-        context.fill();
-      }
-      if (shadow) {
-        context.shadowColor = "rgba(0, 0, 0, 0.6)";
-        context.shadowBlur = size * 0.2;
-      }
-      context.fillStyle = fill;
-      context.fillText(line, x, lineY);
-      context.shadowColor = "transparent";
+      context.fillText(line, x, top + (index + 0.5) * lineHeight);
     });
     context.restore();
   }
@@ -980,24 +1057,31 @@
     return new Error(`Instagram answered ${response.status}: ${detail}`);
   }
 
+  // Names the step in a network failure, which fetch only reports as "Failed
+  // to fetch".
+  async function send(step, url, options) {
+    try {
+      return await fetch(url, options);
+    } catch (error) {
+      throw new Error(`the ${step} failed: ${error.message}`);
+    }
+  }
+
   // Instagram's phone layout only takes photos for stories, so video stories
   // go up the way its desktop site uploads videos for posts, then share with
   // the phone apps' story video fields. `handOff` tells audience.js what to
   // add to the share, and runs before each attempt.
   async function postVideoStory(file, { width, height, durationMs }, handOff) {
     const uploadId = String(Date.now());
-    const {
-      "x-ig-www-claim": _claim,
-      "x-web-device-id": _device,
-      ...headers
-    } = apiHeaders();
-    const upload = await fetch(
-      `https://i.instagram.com/rupload_igvideo/fb_uploader_${uploadId}`,
+    // i.instagram.com refuses cross-origin requests with these headers, so
+    // upload to the same endpoint on this origin.
+    const upload = await send(
+      "upload",
+      `/rupload_igvideo/fb_uploader_${uploadId}`,
       {
         method: "POST",
-        credentials: "include",
         headers: {
-          ...headers,
+          ...apiHeaders(),
           Offset: "0",
           "X-Entity-Length": String(file.size),
           "X-Entity-Name": `fb_uploader_${uploadId}`,
@@ -1038,7 +1122,8 @@
     // Instagram processes the video after the upload and says so until done.
     for (let attempt = 0; attempt < 30; attempt++) {
       handOff();
-      const response = await fetch(
+      const response = await send(
+        "share",
         "/api/v1/media/configure_to_story/?video=1",
         {
           method: "POST",
@@ -1538,7 +1623,7 @@
     const checkbox = (label, checked) => {
       const input = element("input", { type: "checkbox", checked });
       const box = element("span", { className: "box" });
-      box.append(icon("check"));
+      box.append(icon("check"), icon("cross"));
       const toggle = element("label", { className: "check" });
       toggle.append(input, box, element("span", { textContent: label }));
       return { input, toggle };
@@ -1558,6 +1643,9 @@
     };
     const setFacebookAvailable = (available) => {
       facebookAvailable = available;
+      facebook.toggle.title = available
+        ? ""
+        : "Facebook upload not currently supported for video stories.";
       updateFacebook();
     };
     audience.input.onchange = updateFacebook;
@@ -1695,7 +1783,8 @@
         y: 0,
       };
       strokes.length = 0;
-      setZoom(1);
+      // Videos start as large as the card goes.
+      setZoom(post.video ? Number(zoomInput.max) : 1);
       setTool("photo");
       setMode("photo", input ? "Back" : "Cancel");
       // Video stories skip Instagram's composer, which is what knows the
@@ -1704,7 +1793,7 @@
       if (post.video) {
         const seconds = Math.ceil(Math.min(post.duration, MAX_VIDEO_SECONDS));
         showMessage(
-          `The video plays in the story, without going to Facebook. Done records it, which takes ${seconds} seconds.`,
+          `Clicking "Done" will record the video (${seconds} seconds) for upload.`,
         );
         message.hidden = false;
       }
@@ -1831,7 +1920,7 @@
           return;
         }
         showMessage(
-          `Recording the video: ${Math.floor(source.currentTime)} of ${Math.ceil(limit)} seconds.`,
+          `Recording (${Math.floor(source.currentTime)} of ${Math.ceil(limit)} seconds)`,
         );
       };
       return new Promise((resolve, reject) => {
