@@ -20,6 +20,10 @@ changes its site often, so any part of it may stop working without notice.
 3. Pin IG Plus from the puzzle piece menu. Its button holds the settings and
    "Open phone window".
 
+Unpacked extensions do not update. For a new version, unzip it over the same
+folder and click the reload icon on the extension's card. Every copy shares one
+extension ID, so settings carry over.
+
 To post a story, open the phone window, or install Instagram as an app from
 the install icon in Chrome's address bar, and tap Story there.
 
@@ -32,6 +36,9 @@ the install icon in Chrome's address bar, and tap Story there.
 2. Firefox grants site access only when asked. Open `about:addons`, then IG
    Plus, then Permissions, and allow all three sites. Reload Instagram.
 3. Pin IG Plus from the Extensions menu and open the phone window from it.
+
+From 1.0.2, Firefox checks the releases for new versions and updates IG Plus
+itself. Copies of 1.0.0 need the newest `.xpi` installed by hand once.
 
 ### Firefox for Android
 
@@ -194,7 +201,8 @@ Install the tools with `npm install`, which also sets up the commit hooks. Then:
 - `npm test` runs the unit tests in `tests/`.
 - `npm run lint` checks formatting, JavaScript, Markdown, workflows, shell
   scripts, and the Firefox build with Mozilla's linter.
-- `npm run build` writes `dist/chrome` and `dist/firefox`, and a zip of each.
+- `npm run build` writes `dist/chrome`, `dist/chrome-store` and `dist/firefox`,
+  and a zip of each.
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org) with
 a scope from `commitlint.config.cjs`. Releases are tagged from `main`; see
@@ -205,7 +213,8 @@ a scope from `commitlint.config.cjs`. Releases are tagged from `main`; see
 Load `src/` unpacked as above. After editing files, click the reload icon on
 the extension's card, then reopen the app or phone window.
 
-The Chrome Web Store build in `dist/chrome` drops the manifest `key`. The store
+`dist/chrome` is the same as `src/`, for release downloads. The Chrome Web
+Store build in `dist/chrome-store` drops the manifest `key`. The store
 assigns its own item ID, so Google Photos there needs a Chrome Extension client
 for that ID, passed to the build as `IG_PLUS_CHROME_CLIENT_ID`.
 
