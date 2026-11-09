@@ -135,30 +135,41 @@ jobs:
             "dist/ig-plus-$VERSION.xpi" "dist/ig-plus-chrome-$VERSION.zip"
 
   # Submits the version for review; the store publishes it once approved.
+  # Secrets cannot gate a job, so each step checks for the store's item ID.
   chrome:
-    if: github.ref_type == 'tag' && vars.CWS_EXTENSION_ID != ''
+    if: github.ref_type == 'tag'
     needs: [build, publish]
     runs-on: ubuntu-latest
+    env:
+      EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Skip until the store listing exists
+        if: env.EXTENSION_ID == ''
+        run: echo "::notice::CWS_EXTENSION_ID is not set, so the Chrome Web Store is skipped."
 
-      - uses: actions/setup-node@v7
+      - if: env.EXTENSION_ID != ''
+        uses: actions/checkout@v7
+
+      - if: env.EXTENSION_ID != ''
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
 
-      - run: npm ci
+      - if: env.EXTENSION_ID != ''
+        run: npm ci
 
-      - uses: actions/download-artifact@v8
+      - if: env.EXTENSION_ID != ''
+        uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist
 
       - name: Upload and publish
+        if: env.EXTENSION_ID != ''
         env:
           VERSION: ${{ needs.build.outputs.version }}
-          EXTENSION_ID: ${{ vars.CWS_EXTENSION_ID }}
-          PUBLISHER_ID: ${{ vars.CWS_PUBLISHER_ID }}
+          PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
           CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
