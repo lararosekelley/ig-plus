@@ -33,3 +33,69 @@ Repository secrets:
 - `IG_PLUS_CHROME_CLIENT_ID`: the client ID, ending in `.apps.googleusercontent.com`, of a Chrome
   Extension OAuth client made for the store's item ID, so Google Photos works in the store build.
 - `ANTHROPIC_API_KEY`: for the code review bot on pull requests.
+
+## Store descriptions & screenshots
+
+### Description
+
+Paste as it is: the store keeps line breaks, so lines are not wrapped.
+
+```text
+A better web experience for Instagram!
+
+Post Instagram stories from your computer, and use Instagram without the endless home page or Reels feeds.
+
+POST STORIES FROM DESKTOP
+
+Instagram only lets phones post stories. IG Plus opens Instagram in a phone-sized window that Instagram treats as a phone, so the Story button works. Your other Instagram tabs stay as they are.
+
+- Take a photo with your webcam, choose a file, pick from Google Photos, or start from a solid or gradient background.
+- Edit before posting: move and zoom the photo, add text in several styles, and draw.
+- Share to Close Friends only.
+- Discard a story you've started and go back to the feed.
+
+FEWER DISTRACTIONS
+
+- Hide home feed posts while keeping the stories tray.
+- Hide the Reels tab. Reels people send you in messages still open.
+  Turn either one on or off from the toolbar button.
+
+PRIVACY
+
+IG Plus has no servers and collects no data. Photos and settings stay in your browser. Google Photos sign-in only opens Google's photo picker.
+
+IG Plus is not affiliated with or endorsed by Instagram or Meta. Instagram changes its site often, so features may stop working until IG Plus is updated.
+```
+
+### Privacy
+
+The answers for the Privacy tab in the Chrome Web Store dashboard.
+
+Single purpose:
+
+> IG Plus improves Instagram on the web: it lets you post stories from a desktop browser, with an
+> editor for photos, text and drawing, and it can hide the home feed and Reels.
+
+Permission justifications:
+
+- `declarativeNetRequest`: Instagram only offers story posting to phones. For the IG Plus phone
+  window, and only for that tab, a session rule sends a mobile `User-Agent` and drops desktop client
+  hint headers on requests to instagram.com. Other tabs and sites are not changed.
+- `identity`: Signs in to Google so you can choose a photo or video from Google Photos for a story.
+  It asks only for read access to the items you pick in Google's photo picker.
+- `storage`: Saves your two settings, "Hide home feed posts" and "Hide Reels", in the browser.
+- Host permissions:
+  - `instagram.com`: Runs the story editor, the phone window and the feed and Reels hiding on
+    Instagram, and applies the phone window's request rule.
+  - `photospicker.googleapis.com`: Opens Google's photo picker and reads which items you picked.
+  - `googleusercontent.com`: Downloads the photo or video you picked from Google Photos.
+
+Remote code: No. Every script ships in the package. IG Plus fetches only data and media (Instagram
+posts, Google Photos items), never code to run.
+
+Data usage: IG Plus has no server and sends nothing to its developer. Photos, videos and text you
+choose go only to Instagram, when you post them. The Google sign-in token stays in the browser and
+is used only with Google Photos. Tick no data types, and certify the three statements (not sold, not
+used for unrelated purposes, not used for creditworthiness).
+
+Privacy policy URL: <https://github.com/lararosekelley/ig-plus/blob/main/PRIVACY.md>
