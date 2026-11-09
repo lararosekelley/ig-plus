@@ -26,11 +26,8 @@ Repository secrets:
 - `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, and `CWS_REFRESH_TOKEN`: a Google OAuth client and refresh
   token for the Chrome Web Store API. See
   [chrome-webstore-upload-keys](https://github.com/fregante/chrome-webstore-upload-keys).
+- `CWS_EXTENSION_ID` and `CWS_PUBLISHER_ID`: the store item and publisher. Until
+  `CWS_EXTENSION_ID` is set, releases skip the Chrome Web Store.
 - `IG_PLUS_CHROME_CLIENT_ID`: the client ID, ending in `.apps.googleusercontent.com`, of a Chrome
   Extension OAuth client made for the store's item ID, so Google Photos works in the store build.
 - `ANTHROPIC_API_KEY`: for the code review bot on pull requests.
-
-Repository variables:
-
-- `CWS_EXTENSION_ID` and `CWS_PUBLISHER_ID`: the store item and publisher. Until
-  `CWS_EXTENSION_ID` is set, releases skip the Chrome Web Store.
