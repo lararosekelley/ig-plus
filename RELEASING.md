@@ -12,9 +12,11 @@ Pushing `vX.Y.Z` runs the release workflow:
 
 1. It tests and builds the extension.
 2. AMO signs the Firefox build as an unlisted add-on. This can take a few minutes.
-3. A GitHub release is published with the signed `.xpi`, the Chrome zip, and the `CHANGELOG.md`
-   section as its notes.
-4. Once the Chrome Web Store listing exists, the Chrome zip is uploaded and submitted for review.
+3. A GitHub release is published with the signed `.xpi`, the unpacked Chrome zip, and the
+   `CHANGELOG.md` section as its notes. Its `updates.json` points signed Firefox copies at the new
+   `.xpi`; they find it through the latest release, so do not mark a release as a pre-release.
+4. Once the Chrome Web Store listing exists, the store's Chrome zip is uploaded and submitted for
+   review.
 
 ## Settings it needs
 

@@ -1,8 +1,9 @@
 name: Release
 
 # A pushed vX.Y.Z tag publishes a release: the extension is signed for Firefox
-# and attached to a GitHub release with the Chrome zip and the notes from
-# CHANGELOG.md, then uploaded to the Chrome Web Store once that listing exists.
+# and attached to a GitHub release with the unpacked Chrome zip, the
+# updates.json signed Firefox copies check, and the notes from CHANGELOG.md,
+# then uploaded to the Chrome Web Store once that listing exists.
 # Pull requests that touch the build, and runs started by hand, build the same
 # files without publishing.
 
@@ -106,11 +107,14 @@ jobs:
           unzip -q "dist/ig-plus-firefox-$VERSION.zip" -d firefox
           npx web-ext sign --channel=unlisted --source-dir firefox --artifacts-dir signed
           mv signed/*.xpi "ig-plus-$VERSION.xpi"
+          node scripts/updates-json.mjs "$VERSION" "ig-plus-$VERSION.xpi" > updates.json
 
       - uses: actions/upload-artifact@v7
         with:
           name: xpi
-          path: "*.xpi"
+          path: |
+            *.xpi
+            updates.json
           if-no-files-found: error
 
   publish:
@@ -132,7 +136,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
             --verify-tag --title "IG Plus $VERSION" --notes-file dist/notes.md \
-            "dist/ig-plus-$VERSION.xpi" "dist/ig-plus-chrome-$VERSION.zip"
+            "dist/ig-plus-$VERSION.xpi" "dist/ig-plus-chrome-$VERSION.zip" dist/updates.json
 
   # Submits the version for review; the store publishes it once approved.
   # Secrets cannot gate a job, so each step checks for the store's item ID.
@@ -173,4 +177,4 @@ jobs:
           CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
           REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
-        run: npx chrome-webstore-upload --source "dist/ig-plus-chrome-$VERSION.zip"
+        run: npx chrome-webstore-upload --source "dist/ig-plus-chrome-store-$VERSION.zip"
