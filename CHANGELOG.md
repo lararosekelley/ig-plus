@@ -5,6 +5,21 @@ What changed in each version, for the people using the extension. Each section i
 publishes the section matching the tag as the GitHub release notes, so headings must stay
 `## X.Y.Z - YYYY-MM-DD`.
 
+## 1.0.2 - 2026-11-09
+
+### Added
+
+- Share photo and video posts, including reels, to a story with the "Add to story" button beside Save
+  in the home feed, or from a post's link with "Share post". The story links to the post. Videos
+  play in the story with sound, for up to 60 seconds.
+- Keep a story off Facebook with the new "Facebook" setting. Video stories always skip Facebook.
+- Text starts as white on black, in joined boxes like Instagram's own.
+- The editor dims the edges that phones taller than 9:16 cut off.
+- The settings popup shows the version.
+- Firefox installs update themselves from now on. Install this version by hand once.
+- The Chrome download keeps one extension ID, so unzipping a new version over the old folder keeps
+  your settings and Google Photos sign-in.
+
 ## 1.0.0 - 2026-11-04
 
 The first release, signed for Firefox and Firefox for Android.
