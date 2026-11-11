@@ -106,7 +106,9 @@ jobs:
         run: |
           mkdir firefox
           unzip -q "dist/ig-plus-firefox-$VERSION.zip" -d firefox
-          npx web-ext sign --channel=listed --approval-timeout=0 --source-dir firefox
+          # Listed versions must name a license; amo-metadata.json gives it.
+          npx web-ext sign --channel=listed --approval-timeout=0 --source-dir firefox \
+            --amo-metadata amo-metadata.json
 
   publish:
     if: github.ref_type == 'tag'
