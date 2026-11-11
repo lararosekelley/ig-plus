@@ -5,7 +5,7 @@ What changed in each version, for the people using the extension. Each section i
 publishes the section matching the tag as the GitHub release notes, so headings must stay
 `## X.Y.Z - YYYY-MM-DD`.
 
-## 1.0.6 - 2026-11-11
+## 1.0.7 - 2026-11-11
 
 ### Changed
 
