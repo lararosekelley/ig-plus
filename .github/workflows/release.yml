@@ -1,9 +1,9 @@
 name: Release
 
-# A pushed vX.Y.Z tag publishes a release: the extension is signed for Firefox
-# and attached to a GitHub release with the unpacked Chrome zip, the
-# updates.json signed Firefox copies check, and the notes from CHANGELOG.md,
-# then uploaded to the Chrome Web Store once that listing exists.
+# A pushed vX.Y.Z tag publishes a release: the Firefox build goes to
+# addons.mozilla.org for review, a GitHub release carries the unpacked Chrome
+# zip and the notes from CHANGELOG.md, and the Chrome Web Store build is
+# uploaded for review once that listing exists.
 # Pull requests that touch the build, and runs started by hand, build the same
 # files without publishing.
 
@@ -77,7 +77,8 @@ jobs:
             dist/*.zip
           if-no-files-found: error
 
-  # Unlisted: AMO signs the file for anyone to install, without listing it.
+  # Submits the version for Mozilla's review; AMO lists and serves it once
+  # approved, so this does not wait for a signed file.
   firefox:
     if: github.ref_type == 'tag'
     needs: build
@@ -105,17 +106,7 @@ jobs:
         run: |
           mkdir firefox
           unzip -q "dist/ig-plus-firefox-$VERSION.zip" -d firefox
-          npx web-ext sign --channel=unlisted --source-dir firefox --artifacts-dir signed
-          mv signed/*.xpi "ig-plus-$VERSION.xpi"
-          node scripts/updates-json.mjs "$VERSION" "ig-plus-$VERSION.xpi" > updates.json
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: xpi
-          path: |
-            *.xpi
-            updates.json
-          if-no-files-found: error
+          npx web-ext sign --channel=listed --approval-timeout=0 --source-dir firefox
 
   publish:
     if: github.ref_type == 'tag'
@@ -126,17 +117,21 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
+          name: dist
           path: dist
-          merge-multiple: true
 
+      # Copies installed from GitHub before 1.0.4 check the latest release's
+      # updates.json, which points at 1.0.4, the last version they can update to
+      # before AMO takes over.
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
+          gh release download v1.0.4 --repo "$GITHUB_REPOSITORY" --pattern updates.json --dir dist
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
             --verify-tag --title "IG Plus $VERSION" --notes-file dist/notes.md \
-            "dist/ig-plus-$VERSION.xpi" "dist/ig-plus-chrome-$VERSION.zip" dist/updates.json
+            "dist/ig-plus-chrome-$VERSION.zip" dist/updates.json
 
   # Submits the version for review; the store publishes it once approved.
   # Secrets cannot gate a job, so each step checks for the store's item ID.

@@ -7,9 +7,8 @@ or skip Facebook. It can also hide the home feed and Reels.
 
 ## Install
 
-IG Plus is in the Chrome Web Store, and Firefox installs come from GitHub
-releases. Instagram changes its site often, so any part of it may stop working
-without notice.
+IG Plus is in the Chrome Web Store and on addons.mozilla.org. Instagram changes
+its site often, so any part of it may stop working without notice.
 
 ### Chrome
 
@@ -32,24 +31,21 @@ the install icon in Chrome's address bar, and tap Story there.
 
 ### Firefox
 
-1. Download the signed `.xpi` from the newest
-   [release](https://github.com/lararosekelley/ig-plus/releases), or sign your
-   own (see Development). Open it in Firefox, by dragging it into
-   a window or with File, Open File, and click "Add".
+1. Install IG Plus from
+   [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/ig-plus/).
+   It updates itself.
 2. Firefox grants site access only when asked. Open `about:addons`, then IG
    Plus, then Permissions, and allow all three sites. Reload Instagram.
 3. Pin IG Plus from the Extensions menu and open the phone window from it.
 
-IG Plus updates itself. Copies from 1.0.2 and 1.0.3 update to 1.0.4 from
+Copies installed from a GitHub release before 1.0.4 update to 1.0.4 from
 GitHub, then get later versions from addons.mozilla.org. Copies of 1.0.0 need
-the newest `.xpi` installed by hand once.
+1.0.4's `.xpi` installed by hand once.
 
 ### Firefox for Android
 
-1. Download the same signed `.xpi` from the release onto the phone.
-2. In Firefox, open Settings, About Firefox, and tap the Firefox logo five
-   times to enable the debug menu.
-3. In Settings, tap "Install extension from file" and choose the `.xpi`.
+1. In Firefox for Android, open
+   [IG Plus on addons.mozilla.org](https://addons.mozilla.org/firefox/addon/ig-plus/) and tap "Add to Firefox".
 
 The settings are under the Firefox menu, Extensions, IG Plus. Firefox for
 Android already gets Instagram's phone site, so stories work in any tab.
@@ -157,7 +153,7 @@ done
 ## Google Photos
 
 Google Photos needs a Google sign-in through an OAuth client in a Google Cloud
-project. The clients in `src/manifest.json`, and the released `.xpi`, only accept the
+project. The clients in `src/manifest.json`, and the store versions, only accept the
 Google accounts their owner lists as test users. Anyone else sees "Access
 blocked" when signing in, while the rest of IG Plus works. To use Google
 Photos, ask the owner to add your account as a test user, or make your own
@@ -242,8 +238,9 @@ npx web-ext run -t firefox-android --android-device <device-id> \
   --firefox-apk org.mozilla.firefox --source-dir dist/firefox
 ```
 
-Releases are signed as unlisted add-ons on AMO, which makes an `.xpi` anyone can
-install without listing it. To sign a build of your own, use
+Releases go to addons.mozilla.org, which reviews, signs and serves each version.
+To sign a build of your own as an unlisted add-on, with an add-on ID of your own,
+use
 [web-ext](https://extensionworkshop.com/documentation/develop/web-ext-command-reference/#web-ext-sign)
 with AMO API keys:
 
