@@ -5,6 +5,13 @@ What changed in each version, for the people using the extension. Each section i
 publishes the section matching the tag as the GitHub release notes, so headings must stay
 `## X.Y.Z - YYYY-MM-DD`.
 
+## 1.0.5 - 2026-11-11
+
+### Changed
+
+- IG Plus is now on [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/ig-plus/). Firefox and Firefox for
+  Android installs and updates come from there.
+
 ## 1.0.4 - 2026-11-11
 
 ### Changed
