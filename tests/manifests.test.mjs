@@ -4,11 +4,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import {
-  FIREFOX_UPDATE_URL,
-  chromeStoreManifest,
-  firefoxManifest,
-} from "../scripts/manifests.mjs";
+import { chromeStoreManifest, firefoxManifest } from "../scripts/manifests.mjs";
 
 const manifest = JSON.parse(
   await readFile(new URL("../src/manifest.json", import.meta.url), "utf8"),
@@ -43,13 +39,9 @@ test("the Firefox build runs the background as an event page", () => {
   );
 });
 
-test("the Firefox build checks the releases for updates", () => {
+test("the Firefox build gets its updates from addons.mozilla.org", () => {
   const result = firefoxManifest(manifest);
-  assert.equal(
-    result.browser_specific_settings.gecko.update_url,
-    FIREFOX_UPDATE_URL,
-  );
-  assert.equal(manifest.browser_specific_settings.gecko.update_url, undefined);
+  assert.equal(result.browser_specific_settings.gecko.update_url, undefined);
 });
 
 test("updates.json points at the release's signed add-on", async () => {
