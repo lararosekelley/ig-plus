@@ -1,10 +1,6 @@
 // The manifest in src/ is the one Chrome loads unpacked. These derive the
 // manifests each store accepts from it.
 
-// Release assets, where a signed add-on checks for its next version.
-export const FIREFOX_UPDATE_URL =
-  "https://github.com/lararosekelley/ig-plus/releases/latest/download/updates.json";
-
 // The Chrome Web Store rejects a manifest key and assigns the item ID itself,
 // so Google Photos there needs an OAuth client made for that ID.
 export function chromeStoreManifest(manifest, { clientId } = {}) {
@@ -18,13 +14,13 @@ export function chromeStoreManifest(manifest, { clientId } = {}) {
 
 // Firefox runs background scripts as an event page rather than a service
 // worker, and has no use for Chrome's key, OAuth client or minimum version.
+// With no update_url, Firefox checks addons.mozilla.org for updates.
 export function firefoxManifest(manifest) {
   const result = structuredClone(manifest);
   result.background = { scripts: [manifest.background.service_worker] };
   delete result.key;
   delete result.oauth2;
   delete result.minimum_chrome_version;
-  result.browser_specific_settings.gecko.update_url = FIREFOX_UPDATE_URL;
   result.developer = { name: "Lara Kelley", url: manifest.homepage_url };
   return result;
 }

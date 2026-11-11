@@ -40,8 +40,9 @@ the install icon in Chrome's address bar, and tap Story there.
    Plus, then Permissions, and allow all three sites. Reload Instagram.
 3. Pin IG Plus from the Extensions menu and open the phone window from it.
 
-From 1.0.2, Firefox checks the releases for new versions and updates IG Plus
-itself. Copies of 1.0.0 need the newest `.xpi` installed by hand once.
+IG Plus updates itself. Copies from 1.0.2 and 1.0.3 update to 1.0.4 from
+GitHub, then get later versions from addons.mozilla.org. Copies of 1.0.0 need
+the newest `.xpi` installed by hand once.
 
 ### Firefox for Android
 

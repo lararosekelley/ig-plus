@@ -5,6 +5,13 @@ What changed in each version, for the people using the extension. Each section i
 publishes the section matching the tag as the GitHub release notes, so headings must stay
 `## X.Y.Z - YYYY-MM-DD`.
 
+## 1.0.4 - 2026-11-11
+
+### Changed
+
+- Firefox installs now get their updates from addons.mozilla.org instead of GitHub, ready for IG Plus's listing
+  there.
+
 ## 1.0.3 - 2026-11-09
 
 ### Changed
