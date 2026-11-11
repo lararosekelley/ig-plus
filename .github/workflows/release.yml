@@ -106,7 +106,8 @@ jobs:
         run: |
           mkdir firefox
           unzip -q "dist/ig-plus-firefox-$VERSION.zip" -d firefox
-          # Listed versions must name a license; amo-metadata.json gives it.
+          # Listed add-ons need a category and listed versions a license, which
+          # amo-metadata.json gives.
           npx web-ext sign --channel=listed --approval-timeout=0 --source-dir firefox \
             --amo-metadata amo-metadata.json
 
