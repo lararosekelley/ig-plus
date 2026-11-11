@@ -7,22 +7,25 @@ or skip Facebook. It can also hide the home feed and Reels.
 
 ## Install
 
-IG Plus is not in the Chrome Web Store or on addons.mozilla.org. Instagram
-changes its site often, so any part of it may stop working without notice.
+IG Plus is in the Chrome Web Store, and Firefox installs come from GitHub
+releases. Instagram changes its site often, so any part of it may stop working
+without notice.
 
 ### Chrome
 
-1. Download `ig-plus-chrome-<version>.zip` from the newest
-   [release](https://github.com/lararosekelley/ig-plus/releases) and unzip it
-   somewhere it can stay.
-2. Open `chrome://extensions`, turn on "Developer mode", click "Load
-   unpacked", and choose the unzipped folder.
-3. Pin IG Plus from the puzzle piece menu. Its button holds the settings and
+1. Install IG Plus from the
+   [Chrome Web Store](https://chromewebstore.google.com/detail/ig-plus/pnkofjdmopkdbcacabloladehdapaleb).
+   It updates itself.
+2. Pin IG Plus from the puzzle piece menu. Its button holds the settings and
    "Open phone window".
 
-Unpacked extensions do not update. For a new version, unzip it over the same
-folder and click the reload icon on the extension's card. Every copy shares one
-extension ID, so settings carry over.
+To run it unpacked instead, download `ig-plus-chrome-<version>.zip` from the
+newest [release](https://github.com/lararosekelley/ig-plus/releases) and unzip
+it somewhere it can stay. Open `chrome://extensions`, turn on "Developer mode",
+click "Load unpacked", and choose the unzipped folder. Unpacked copies do not
+update: unzip a new version over the same folder and click the reload icon on
+the extension's card. Unpacked and store copies are separate extensions, with
+their own settings.
 
 To post a story, open the phone window, or install Instagram as an app from
 the install icon in Chrome's address bar, and tap Story there.
