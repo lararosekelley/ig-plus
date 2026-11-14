@@ -21,8 +21,8 @@
     "chrome-webstore-upload-cli": "^4.0.2",
     "husky": "^9.1.7",
     "markdownlint-cli2": "^0.24.0",
-    "oxfmt": "^0.77.0",
-    "oxlint": "^1.92.0",
+    "oxfmt": "^0.78.0",
+    "oxlint": "^1.93.0",
     "web-ext": "^10.8.0"
   }
 }
