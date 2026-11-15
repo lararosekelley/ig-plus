@@ -55,10 +55,10 @@ function loadPage({ phone = true, respond } = {}) {
     TypeError,
     console: { warn: (...args) => warnings.push(args) },
   });
-  const handOff = (closeFriends, reshare, skipFacebook = false) =>
+  const handOff = (closeFriends, reshare, skipFacebook = false, mentions) =>
     window.dispatchEvent(
       new CustomEvent("ig-plus:handoff", {
-        detail: { closeFriends, skipFacebook, reshare },
+        detail: { closeFriends, skipFacebook, reshare, mentions },
       }),
     );
   const shared = () =>
@@ -234,4 +234,40 @@ test("never logs a share request it cannot read", async () => {
   await assert.rejects(page.window.fetch(SHARE_URL, { method: "POST", body }));
   assert.equal(page.warnings.length, 1);
   assert.ok(!page.warnings.flat().some((arg) => String(arg).includes("token")));
+});
+
+const MENTIONS = [
+  {
+    userId: "17841400000000001",
+    box: { x: 0.4, y: 0.5, width: 0.2, height: 0.04 },
+  },
+];
+
+test("tags the people the story mentions", async () => {
+  const page = loadPage();
+  let notices = 0;
+  page.window.addEventListener("ig-plus:shared", () => notices++);
+  page.handOff(false, null, false, MENTIONS);
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  const body = params(page.sent[0].body);
+  const [mention] = JSON.parse(body.reel_mentions);
+  assert.equal(mention.user_id, MENTIONS[0].userId);
+  assert.equal(mention.type, "mention");
+  assert.equal(mention.x, 0.4);
+  assert.equal(mention.height, 0.04);
+  assert.equal(body.audience, undefined);
+  assert.equal(body.share_to_facebook, "true");
+  assert.equal(notices, 0);
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  assert.equal(params(page.sent[1].body).reel_mentions, undefined);
+});
+
+test("shares a public story without its tags when it cannot read it", async () => {
+  const page = loadPage();
+  page.handOff(false, null, false, MENTIONS);
+  const status = page.shared();
+  const body = new Blob(["x"]);
+  await page.window.fetch(SHARE_URL, { method: "POST", body });
+  assert.equal(page.sent[0].body, body);
+  assert.equal(await status, "untagged");
 });
