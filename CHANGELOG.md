@@ -5,6 +5,13 @@ What changed in each version, for the people using the extension. Each section i
 publishes the section matching the tag as the GitHub release notes, so headings must stay
 `## X.Y.Z - YYYY-MM-DD`.
 
+## 1.1.0 - 2026-11-15
+
+### Added
+
+- Mention people in story text: typing `@` suggests accounts, and each `@username` is underlined and tagged when the
+  story is shared, so it can be tapped and the account is notified. "Done" checks that every name is an account first.
+
 ## 1.0.7 - 2026-11-11
 
 ### Changed
