@@ -19,6 +19,7 @@ const SHARE_BODY =
 function loadPage({ phone = true, respond } = {}) {
   const window = new EventTarget();
   const sent = [];
+  const warnings = [];
   window.fetch = async (url, options = {}) => {
     sent.push({ url, body: options.body });
     if (respond) {
@@ -52,7 +53,7 @@ function loadPage({ phone = true, respond } = {}) {
     Request,
     CustomEvent,
     TypeError,
-    console: { warn() {} },
+    console: { warn: (...args) => warnings.push(args) },
   });
   const handOff = (closeFriends, reshare, skipFacebook = false) =>
     window.dispatchEvent(
@@ -68,7 +69,7 @@ function loadPage({ phone = true, respond } = {}) {
         { once: true },
       ),
     );
-  return { window, XMLHttpRequest, sent, handOff, shared };
+  return { window, XMLHttpRequest, sent, warnings, handOff, shared };
 }
 
 const params = (body) => Object.fromEntries(new URLSearchParams(String(body)));
@@ -224,4 +225,13 @@ test("does nothing outside phone tabs", async () => {
   page.handOff(true);
   await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
   assert.equal(page.sent[0].body, SHARE_BODY);
+});
+
+test("never logs a share request it cannot read", async () => {
+  const page = loadPage();
+  page.handOff(true);
+  const body = "fb_dtsg=token&caption=";
+  await assert.rejects(page.window.fetch(SHARE_URL, { method: "POST", body }));
+  assert.equal(page.warnings.length, 1);
+  assert.ok(!page.warnings.flat().some((arg) => String(arg).includes("token")));
 });

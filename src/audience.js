@@ -100,7 +100,10 @@
     reshare = null;
     const amended = amend(body, wanted);
     if (!amended) {
-      console.warn("IG Plus could not read the share request:", body);
+      console.warn(
+        "IG Plus could not read the share request, a",
+        body?.constructor?.name ?? typeof body,
+      );
       if (!wanted.closeFriends && !wanted.skipFacebook) {
         return null;
       }
