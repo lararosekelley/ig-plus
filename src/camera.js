@@ -504,6 +504,57 @@
       flex: 1;
       min-width: 0;
     }
+    .mention-field {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Opens upward over the image, so it never pushes the controls away. */
+    .suggestions {
+      position: absolute;
+      right: 0;
+      bottom: calc(100% + 4px);
+      left: 0;
+      z-index: 1;
+      box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      max-height: 168px;
+      overflow-y: auto;
+      padding: 4px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      background: var(--surface);
+    }
+    .suggestions button {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 4px 8px;
+      background: transparent;
+      box-shadow: none;
+      color: inherit;
+      font-weight: 600;
+      text-align: left;
+    }
+    .suggestions button.selected {
+      background: var(--accent);
+      color: var(--accent-text);
+    }
+    .suggestions img {
+      flex: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+    }
+    .suggestions span {
+      overflow: hidden;
+      opacity: 0.7;
+      font-weight: 400;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     textarea::placeholder,
     input[type="text"]::placeholder {
       color: var(--text-muted);
@@ -942,18 +993,28 @@
     context.fill();
   }
 
+  // Sets the text's font on the context and returns its centered lines.
+  function layoutText(context, { value, y, size, font }) {
+    context.font = FONTS[font].font(size);
+    const lineHeight = size * 1.3;
+    const lines = wrapLines(context, value, STORY.width * 0.85);
+    return { lines, lineHeight, top: y - (lineHeight * lines.length) / 2 };
+  }
+
   function drawText(context, { value, x, y, size, style, font }) {
     if (!value.trim()) {
       return;
     }
     const { fill, box, shadow } = TEXT_STYLES[style];
-    const lineHeight = size * 1.3;
     context.save();
-    context.font = FONTS[font].font(size);
+    const { lines, lineHeight, top } = layoutText(context, {
+      value,
+      y,
+      size,
+      font,
+    });
     context.textAlign = "center";
     context.textBaseline = "middle";
-    const lines = wrapLines(context, value, STORY.width * 0.85);
-    const top = y - (lineHeight * lines.length) / 2;
     if (box) {
       context.fillStyle = box;
       drawTextBoxes(context, {
@@ -972,9 +1033,70 @@
     }
     context.fillStyle = fill;
     lines.forEach((line, index) => {
-      context.fillText(line, x, top + (index + 0.5) * lineHeight);
+      const middle = top + (index + 0.5) * lineHeight;
+      context.fillText(line, x, middle);
+      // Like Instagram, mentions of real accounts are underlined.
+      const left = x - context.measureText(line).width / 2;
+      for (const { username, offset, width } of lineMentions(context, line)) {
+        if (userIds.has(username)) {
+          context.fillRect(
+            left + offset,
+            middle + size * 0.42,
+            width,
+            Math.max(2, size * 0.06),
+          );
+        }
+      }
     });
     context.restore();
+  }
+
+  // Instagram usernames are up to 30 letters, digits, periods and
+  // underscores. A trailing period ends the sentence, not the name.
+  const MENTION = /(^|[^\w.@])@([\w.]{1,30})/g;
+  const TYPED_MENTION = /(?:^|[^\w.@])@([\w.]{0,30})$/;
+
+  // The mentions in one drawn line, with their offsets from its left edge.
+  function lineMentions(context, line) {
+    return [...line.matchAll(MENTION)].flatMap((match) => {
+      const username = match[2].replace(/\.+$/, "");
+      if (!username) {
+        return [];
+      }
+      const start = match.index + match[1].length;
+      return {
+        username: username.toLowerCase(),
+        offset: context.measureText(line.slice(0, start)).width,
+        width: context.measureText(`@${username}`).width,
+      };
+    });
+  }
+
+  // Where each mention in the text is drawn, as fractions of the story, for
+  // Instagram's tap areas.
+  function mentionBoxes(context, text) {
+    if (!text.value.trim()) {
+      return [];
+    }
+    context.save();
+    const { lines, lineHeight, top } = layoutText(context, text);
+    const mentions = [];
+    lines.forEach((line, index) => {
+      const left = text.x - context.measureText(line).width / 2;
+      for (const { username, offset, width } of lineMentions(context, line)) {
+        mentions.push({
+          username,
+          box: {
+            x: (left + offset + width / 2) / STORY.width,
+            y: (top + (index + 0.5) * lineHeight) / STORY.height,
+            width: width / STORY.width,
+            height: lineHeight / STORY.height,
+          },
+        });
+      }
+    });
+    context.restore();
+    return mentions;
   }
 
   function drawStrokes(context, strokes) {
@@ -1050,11 +1172,16 @@
 
   async function failure(response) {
     const text = await response.text();
-    let detail = text.slice(0, 200);
+    let detail;
     try {
-      detail = JSON.parse(text).message ?? detail;
-    } catch {}
-    return new Error(`Instagram answered ${response.status}: ${detail}`);
+      detail = JSON.parse(text).message;
+    } catch {
+      // An HTML error page says nothing useful.
+      detail = text.trimStart().startsWith("<") ? "" : text.slice(0, 200);
+    }
+    return new Error(
+      `Instagram answered ${response.status}${detail ? `: ${detail}` : ""}`,
+    );
   }
 
   // Names the step in a network failure, which fetch only reports as "Failed
@@ -1065,6 +1192,118 @@
     } catch (error) {
       throw new Error(`the ${step} failed: ${error.message}`);
     }
+  }
+
+  // Instagram's web search is a GraphQL query whose request carries the
+  // session's fields. Its own latest GraphQL request supplies them, and its
+  // own search supplies the query's current ID; neither is ever logged.
+  const GRAPHQL_URL = /\/api\/graphql\/?$/;
+  const SEARCH_QUERY = "PolarisSearchBoxRefetchableQuery";
+  let graphqlFields;
+  let searchDocId = "27706427925724183";
+  const graphqlRequests = new WeakMap();
+  const nativeOpen = XMLHttpRequest.prototype.open;
+  const nativeSend = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.open = function (method, url) {
+    graphqlRequests.set(
+      this,
+      method.toUpperCase() === "POST" && GRAPHQL_URL.test(String(url)),
+    );
+    return nativeOpen.apply(this, arguments);
+  };
+  XMLHttpRequest.prototype.send = function (body) {
+    if (graphqlRequests.get(this) && typeof body === "string") {
+      const fields = new URLSearchParams(body);
+      if (fields.has("fb_dtsg")) {
+        graphqlFields = fields;
+      }
+      if (fields.get("fb_api_req_friendly_name") === SEARCH_QUERY) {
+        searchDocId = fields.get("doc_id") ?? searchDocId;
+      }
+    }
+    return nativeSend.apply(this, arguments);
+  };
+
+  // Usernames found by search, with their user IDs.
+  const userIds = new Map();
+  const searches = new Map();
+  const searchSession = crypto.randomUUID();
+
+  // Resolves to up to 6 accounts matching the query.
+  function searchUsers(query) {
+    const key = query.toLowerCase();
+    if (!searches.has(key)) {
+      const search = runSearch(query);
+      searches.set(key, search);
+      // A failed search is tried again next time.
+      search.catch(() => searches.delete(key));
+    }
+    return searches.get(key);
+  }
+
+  async function runSearch(query) {
+    if (!graphqlFields) {
+      throw new Error("Instagram has not finished loading");
+    }
+    const fields = new URLSearchParams(graphqlFields);
+    fields.set("fb_api_caller_class", "RelayModern");
+    fields.set("fb_api_req_friendly_name", SEARCH_QUERY);
+    fields.set("server_timestamps", "true");
+    fields.set("doc_id", searchDocId);
+    fields.set(
+      "variables",
+      JSON.stringify({
+        data: {
+          context: "blended",
+          include_reel: "true",
+          query,
+          rank_token: "",
+          search_session_id: searchSession,
+          search_surface: "web_top_search",
+        },
+        hasQuery: true,
+      }),
+    );
+    const response = await fetch("/api/graphql", {
+      method: "POST",
+      headers: {
+        ...apiHeaders(),
+        "content-type": "application/x-www-form-urlencoded",
+        "x-fb-friendly-name": SEARCH_QUERY,
+        "x-fb-lsd": fields.get("lsd") ?? "",
+      },
+      body: fields,
+    });
+    if (!response.ok) {
+      throw await failure(response);
+    }
+    const data = await response.json();
+    const users = data.data?.xdt_api__v1__fbsearch__topsearch_connection?.users;
+    if (!users) {
+      throw new Error(
+        data.errors?.[0]?.message ?? "Instagram's search answered oddly",
+      );
+    }
+    for (const { user } of users) {
+      userIds.set(user.username.toLowerCase(), String(user.pk));
+    }
+    return users.slice(0, 6).map(({ user }) => ({
+      username: user.username,
+      name: user.full_name,
+      picture: user.profile_pic_url,
+    }));
+  }
+
+  // Resolves to the account's user ID, or null when there is no such account.
+  async function lookUpUser(username) {
+    if (!userIds.has(username)) {
+      try {
+        await searchUsers(username);
+      } catch (error) {
+        throw new Error(`the account lookup failed: ${error.message}`);
+      }
+    }
+    return userIds.get(username) ?? null;
   }
 
   // Instagram's phone layout only takes photos for stories, so video stories
@@ -1383,6 +1622,7 @@
     "blocked-facebook":
       "Not shared: sharing to Facebook could not be turned off.",
     shared: "Shared to your story.",
+    untagged: "Shared, but the people you mentioned could not be tagged.",
   };
 
   // audience.js reports how a close friends share went.
@@ -1549,6 +1789,13 @@
       rows: 2,
       placeholder: "Add text, then drag on the image to place it",
     });
+    const suggestions = element("div", {
+      className: "suggestions",
+      role: "listbox",
+      hidden: true,
+    });
+    const mentionField = element("div", { className: "mention-field" });
+    mentionField.append(textInput, suggestions);
     const sizeInput = element("input", {
       type: "range",
       min: 40,
@@ -1568,13 +1815,13 @@
     // Each tool shows only its own controls.
     const toolControls = {
       photo: [photoRow],
-      text: [textInput, sizeRow],
+      text: [mentionField, sizeRow],
       brush: [brushSwatches, brushSizeRow],
     };
     controls.append(
       toolRow,
       photoRow,
-      textInput,
+      mentionField,
       sizeRow,
       brushSwatches,
       brushSizeRow,
@@ -1818,7 +2065,7 @@
       host.remove();
     };
     // Resolves to whether Instagram took the file.
-    const handOff = async (file) => {
+    const handOff = async (file, mentions = []) => {
       const reshare = base?.post
         ? { mediaId: base.post.mediaId, card: cardSticker(base) }
         : null;
@@ -1827,7 +2074,7 @@
       const tellAudience = () =>
         window.dispatchEvent(
           new CustomEvent("ig-plus:handoff", {
-            detail: { closeFriends, skipFacebook, reshare },
+            detail: { closeFriends, skipFacebook, reshare, mentions },
           }),
         );
       if (file.type.startsWith("video/") && base?.post) {
@@ -2068,22 +2315,62 @@
           0.92,
         ),
       );
+    // Resolves to the mentions with their user IDs, or null after saying
+    // which names are not accounts.
+    const resolveMentions = async () => {
+      const mentions = mentionBoxes(review.getContext("2d"), text);
+      if (!mentions.length) {
+        return [];
+      }
+      showMessage("Looking up the people you mentioned...");
+      const ids = await Promise.all(
+        mentions.map(({ username }) => lookUpUser(username)),
+      );
+      const missing = [
+        ...new Set(
+          mentions
+            .filter((_, index) => !ids[index])
+            .map(({ username }) => `@${username}`),
+        ),
+      ];
+      if (missing.length) {
+        showMessage(
+          `${missing.join(", ")} ${missing.length === 1 ? "is not an Instagram account" : "are not Instagram accounts"}. Fix the name, or remove the @ to keep it as plain text.`,
+        );
+        return null;
+      }
+      showMessage("");
+      return mentions.map(({ box }, index) => ({ userId: ids[index], box }));
+    };
+
     done.onclick = async () => {
       if (busy) {
         return;
       }
       flush();
       busy = done.disabled = back.disabled = controls.inert = true;
+      // Sound needs an audio context made within the click, before the
+      // lookups wait on the network.
+      const audio = base.post?.video ? new AudioContext() : null;
+      // recordVideo closes the context once it has it.
+      let recording = false;
       try {
-        // Sound needs an audio context made within the click.
-        await handOff(
-          await (base.post?.video
-            ? recordVideo(new AudioContext())
-            : snapshot()),
-        );
+        const mentions = await resolveMentions();
+        if (mentions) {
+          // Underlines the names the lookups just confirmed.
+          draw();
+          recording = Boolean(audio);
+          await handOff(
+            await (audio ? recordVideo(audio) : snapshot()),
+            mentions,
+          );
+        }
       } catch (error) {
         showMessage(`Could not make the story: ${error.message}`);
       } finally {
+        if (audio && !recording) {
+          audio.close();
+        }
         busy = done.disabled = back.disabled = controls.inert = false;
       }
     };
@@ -2120,10 +2407,119 @@
       render();
     };
 
-    // Keep Instagram's keyboard shortcuts from reacting to typing.
-    textInput.addEventListener("keydown", (event) => event.stopPropagation());
+    // Suggests accounts while a mention is typed, like Instagram's apps.
+    let choices = [];
+    let selected = 0;
+    let searchTimer;
+    // Bumped whenever the suggestions close, so late results are dropped.
+    let searchRound = 0;
+    const hideSuggestions = () => {
+      clearTimeout(searchTimer);
+      searchRound++;
+      choices = [];
+      suggestions.hidden = true;
+    };
+    // The mention being typed before the caret: { query, start }.
+    const typedMention = () => {
+      const before = textInput.value.slice(0, textInput.selectionStart);
+      const query = before.match(TYPED_MENTION)?.[1];
+      return query && { query, start: before.length - query.length };
+    };
+    const pickSuggestion = ({ username }) => {
+      const typed = typedMention();
+      if (!typed) {
+        return;
+      }
+      const after = textInput.value.slice(textInput.selectionStart);
+      const insert = after.startsWith(" ") ? username : `${username} `;
+      textInput.value = textInput.value.slice(0, typed.start) + insert + after;
+      // After the space that follows the name, whether added or already there.
+      const caret = typed.start + username.length + 1;
+      textInput.setSelectionRange(caret, caret);
+      text.value = textInput.value;
+      hideSuggestions();
+      render();
+    };
+    const selectSuggestion = (index) => {
+      selected = (index + choices.length) % choices.length;
+      [...suggestions.children].forEach((button, position) => {
+        button.classList.toggle("selected", position === selected);
+        button.setAttribute("aria-selected", position === selected);
+      });
+      suggestions.children[selected].scrollIntoView({ block: "nearest" });
+    };
+    const showSuggestions = (users) => {
+      choices = users;
+      suggestions.replaceChildren(
+        ...users.map((user) => {
+          const button = element("button", { type: "button", role: "option" });
+          button.append(
+            element("img", { src: user.picture, alt: "" }),
+            `@${user.username}`,
+            element("span", { textContent: user.name }),
+          );
+          // Keeps the text box focused, so it does not blur and hide this.
+          button.onpointerdown = (event) => {
+            event.preventDefault();
+            pickSuggestion(user);
+          };
+          return button;
+        }),
+      );
+      suggestions.hidden = !users.length;
+      if (users.length) {
+        selectSuggestion(0);
+      }
+    };
+    const updateSuggestions = () => {
+      const query = typedMention()?.query;
+      hideSuggestions();
+      if (!query) {
+        return;
+      }
+      const round = searchRound;
+      searchTimer = setTimeout(async () => {
+        try {
+          const users = await searchUsers(query);
+          if (round === searchRound) {
+            showSuggestions(users);
+          }
+          // Names this search confirmed are now underlined.
+          render();
+        } catch (error) {
+          console.warn("IG Plus could not search accounts:", error.message);
+        }
+      }, 250);
+    };
+
+    textInput.addEventListener("keydown", (event) => {
+      // Keep Instagram's keyboard shortcuts from reacting to typing.
+      event.stopPropagation();
+      if (!choices.length) {
+        return;
+      }
+      const moves = { ArrowDown: 1, ArrowUp: -1 };
+      if (event.key in moves) {
+        selectSuggestion(selected + moves[event.key]);
+      } else if (event.key === "Enter" || event.key === "Tab") {
+        pickSuggestion(choices[selected]);
+      } else if (event.key === "Escape") {
+        hideSuggestions();
+      } else {
+        return;
+      }
+      event.preventDefault();
+    });
+    textInput.addEventListener("keyup", (event) => {
+      if (/^(ArrowLeft|ArrowRight|Home|End)$/.test(event.key)) {
+        updateSuggestions();
+      }
+    });
+    textInput.addEventListener("click", updateSuggestions);
+    textInput.addEventListener("blur", hideSuggestions);
     textInput.oninput = () => {
       text.value = textInput.value;
+      updateSuggestions();
       render();
     };
     sizeInput.oninput = () => {

@@ -107,6 +107,10 @@ time.
 Phones taller than 9:16 fill the screen with a story, cutting about 9% from each
 side, so the editor dims those edges. Keep text inside the dashed lines.
 
+Typing `@` in the text suggests accounts. Each `@username` in the text is tagged
+when the story is shared, as in Instagram's apps: the name can be tapped, and
+the account is notified. "Done" first checks that every name is an account.
+
 ## Sharing posts
 
 In a phone tab, photo and video posts in the home feed get an "Add to story"

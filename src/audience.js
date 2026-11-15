@@ -1,7 +1,8 @@
 // Runs in the page's main world so it can amend Instagram's own request when a
-// story should go to close friends only, skip Facebook, or link to a post it
-// shares. Instagram's mobile web composer can do none of these, but the
-// endpoint it shares through accepts the fields the phone apps send.
+// story should go to close friends only, skip Facebook, link to a post it
+// shares, or tag the people its text mentions. Instagram's mobile web composer
+// can do none of these, but the endpoint it shares through accepts the fields
+// the phone apps send.
 (() => {
   // mobile.js marks phone tabs before this runs.
   if (!document.documentElement.dataset.igPlusPhone) {
@@ -11,18 +12,21 @@
   const SHARE_URL = /\/api\/v1\/media\/configure_to_story\//;
 
   // camera.js says whether the story it hands off is for close friends,
-  // whether to skip Facebook, and which post it shares, if any: { mediaId,
-  // card } with the post's card as fractions of the story.
+  // whether to skip Facebook, which post it shares, if any: { mediaId,
+  // card } with the post's card as fractions of the story, and who its text
+  // mentions: [{ userId, box }] with each box as fractions of the story.
   let closeFriends = false;
   let skipFacebook = false;
   let reshare = null;
+  let mentions = [];
   window.addEventListener("ig-plus:handoff", (event) => {
     closeFriends = event.detail.closeFriends;
     skipFacebook = event.detail.skipFacebook ?? false;
     reshare = event.detail.reshare ?? null;
+    mentions = event.detail.mentions ?? [];
   });
 
-  function amend(body, { closeFriends, skipFacebook, reshare }) {
+  function amend(body, { closeFriends, skipFacebook, reshare, mentions }) {
     const params = new URLSearchParams(
       body instanceof URLSearchParams || typeof body === "string" ? body : "",
     );
@@ -60,6 +64,24 @@
         ]),
       );
     }
+    if (mentions.length) {
+      // The mentions are drawn into the story; these make them tappable and
+      // notify the people mentioned.
+      params.set(
+        "reel_mentions",
+        JSON.stringify(
+          mentions.map(({ userId, box }) => ({
+            ...box,
+            z: 0,
+            rotation: 0,
+            type: "mention",
+            user_id: userId,
+            is_sticker: false,
+            display_type: "mention_username",
+          })),
+        ),
+      );
+    }
     return typeof body === "string" ? params.toString() : params;
   }
 
@@ -89,15 +111,16 @@
   // Facebook, cannot be amended and must not go out.
   function takeAmendment(method, url, body) {
     if (
-      (!closeFriends && !skipFacebook && !reshare) ||
+      (!closeFriends && !skipFacebook && !reshare && !mentions.length) ||
       method.toUpperCase() !== "POST" ||
       !SHARE_URL.test(url)
     ) {
       return null;
     }
-    const wanted = { closeFriends, skipFacebook, reshare };
+    const wanted = { closeFriends, skipFacebook, reshare, mentions };
     closeFriends = skipFacebook = false;
     reshare = null;
+    mentions = [];
     const amended = amend(body, wanted);
     if (!amended) {
       console.warn(
@@ -105,6 +128,13 @@
         body?.constructor?.name ?? typeof body,
       );
       if (!wanted.closeFriends && !wanted.skipFacebook) {
+        if (wanted.mentions.length) {
+          window.dispatchEvent(
+            new CustomEvent("ig-plus:shared", {
+              detail: { status: "untagged" },
+            }),
+          );
+        }
         return null;
       }
       const status = wanted.closeFriends ? "blocked" : "blocked-facebook";
