@@ -20,9 +20,9 @@
     "@commitlint/config-conventional": "^21.2.4",
     "chrome-webstore-upload-cli": "^4.0.2",
     "husky": "^9.1.7",
-    "markdownlint-cli2": "^0.24.0",
-    "oxfmt": "^0.77.0",
-    "oxlint": "^1.92.0",
+    "markdownlint-cli2": "^0.24.1",
+    "oxfmt": "^0.79.0",
+    "oxlint": "^1.94.0",
     "web-ext": "^10.8.0"
   }
 }
