@@ -25,6 +25,20 @@
     reshare = event.detail.reshare ?? null;
     mentions = event.detail.mentions ?? [];
   });
+  // A file picked for a new story drops what a discarded one asked for.
+  // camera.js attaches its file before the handoff, so its own stories keep
+  // theirs.
+  window.addEventListener(
+    "change",
+    (event) => {
+      if (event.target?.type === "file") {
+        closeFriends = skipFacebook = false;
+        reshare = null;
+        mentions = [];
+      }
+    },
+    true,
+  );
 
   function amend(body, { closeFriends, skipFacebook, reshare, mentions }) {
     const params = new URLSearchParams(

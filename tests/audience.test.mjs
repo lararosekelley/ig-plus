@@ -179,6 +179,29 @@ test("reads responses in Facebook's ajax wrapper", async () => {
   assert.equal(await status, "public");
 });
 
+// A change event from a file input, as Instagram's own picker sends.
+const pickFile = (window) => {
+  const event = new Event("change");
+  Object.defineProperty(event, "target", { value: { type: "file" } });
+  window.dispatchEvent(event);
+};
+
+test("drops a discarded story's close friends when a new file is picked", async () => {
+  const page = loadPage();
+  page.handOff(true, RESHARE, true, MENTIONS);
+  pickFile(page.window);
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  assert.equal(page.sent[0].body, SHARE_BODY);
+});
+
+test("keeps close friends handed off after the file is attached", async () => {
+  const page = loadPage();
+  pickFile(page.window);
+  page.handOff(true);
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  assert.equal(params(page.sent[0].body).audience, "besties");
+});
+
 test("ignores other requests while close friends is pending", async () => {
   const page = loadPage();
   page.handOff(true);
