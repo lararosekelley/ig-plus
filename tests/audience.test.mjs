@@ -13,6 +13,8 @@ const SHARE_BODY =
   "caption=&configure_mode=1&share_to_facebook=true" +
   "&share_to_fb_destination_id=abc&share_to_fb_destination_type=USER" +
   "&upload_id=123&fb_dtsg=token";
+// The next story's share, which must not inherit the last one's amendment.
+const NEXT_BODY = SHARE_BODY.replace("upload_id=123", "upload_id=456");
 
 // Loads audience.js against a stand-in page whose share endpoint echoes the
 // audience it receives, the way Instagram's response reports it.
@@ -94,12 +96,87 @@ test("shares to close friends without cross-posting to Facebook", async () => {
   assert.equal(await status, "close-friends");
 });
 
-test("applies close friends to one share only", async () => {
+test("applies close friends to one story only", async () => {
   const page = loadPage();
   page.handOff(true);
   await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
-  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  await page.window.fetch(SHARE_URL, { method: "POST", body: NEXT_BODY });
   assert.equal(params(page.sent[1].body).audience, undefined);
+});
+
+test("keeps close friends when Instagram retries a refused share", async () => {
+  let refuse = true;
+  const page = loadPage({
+    respond: () => {
+      const body = refuse ? { status: "fail", message: "Try again" } : {};
+      refuse = false;
+      return new Response(JSON.stringify(body), { status: 400 });
+    },
+  });
+  page.handOff(true);
+  const status = page.shared();
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  assert.equal(await status, "unknown");
+  assert.deepEqual(page.warnings.at(-1).slice(1), ["Try again"]);
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  const retry = params(page.sent[1].body);
+  assert.equal(retry.audience, "besties");
+  assert.equal(retry.share_to_facebook, "false");
+});
+
+const signedBody = (fields) =>
+  "caption=&configure_mode=1&share_to_facebook=true&upload_id=123" +
+  `&signed_body=${encodeURIComponent(`SIGNATURE.${JSON.stringify(fields)}`)}` +
+  "&fb_dtsg=token";
+
+const signedFields = (body) => {
+  const signed = params(body).signed_body;
+  assert.ok(signed.startsWith("SIGNATURE."));
+  return JSON.parse(signed.slice("SIGNATURE.".length));
+};
+
+test("amends the signed copy of the share's fields", async () => {
+  const page = loadPage();
+  page.handOff(true, null, false, MENTIONS);
+  const body = signedBody({
+    caption: "",
+    share_to_facebook: "true",
+    share_to_fb_destination_id: "abc",
+    share_to_fb_destination_type: "USER",
+    upload_id: "123",
+  });
+  await page.window.fetch(SHARE_URL, { method: "POST", body });
+  const signed = signedFields(page.sent[0].body);
+  assert.equal(signed.audience, "besties");
+  assert.equal(signed.share_to_facebook, "false");
+  assert.equal(signed.share_to_fb_destination_id, undefined);
+  assert.equal(signed.share_to_fb_destination_type, undefined);
+  assert.equal(signed.upload_id, "123");
+  assert.equal(JSON.parse(signed.reel_mentions)[0].user_id, MENTIONS[0].userId);
+  assert.equal(params(page.sent[0].body).audience, "besties");
+});
+
+test("stops a close friends share whose signed fields it cannot read", async () => {
+  const page = loadPage();
+  page.handOff(true);
+  const status = page.shared();
+  const body = SHARE_BODY + "&signed_body=SIGNATURE.not-json";
+  await assert.rejects(page.window.fetch(SHARE_URL, { method: "POST", body }));
+  assert.equal(page.sent.length, 0);
+  assert.equal(await status, "blocked");
+});
+
+test("reads responses in Facebook's ajax wrapper", async () => {
+  const page = loadPage({
+    respond: () =>
+      new Response(
+        `for (;;);${JSON.stringify({ __ar: 1, payload: { media: { id: 1 } } })}`,
+      ),
+  });
+  page.handOff(true);
+  const status = page.shared();
+  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  assert.equal(await status, "public");
 });
 
 test("ignores other requests while close friends is pending", async () => {
@@ -152,7 +229,7 @@ test("links a shared post to the story", async () => {
   assert.equal(sticker.y, 0.45);
   assert.equal(body.audience, undefined);
   assert.equal(body.share_to_facebook, "true");
-  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  await page.window.fetch(SHARE_URL, { method: "POST", body: NEXT_BODY });
   assert.equal(params(page.sent[1].body).reshared_media_id, undefined);
   assert.equal(notices, 0);
 });
@@ -188,7 +265,7 @@ test("keeps a public story off Facebook when asked", async () => {
   assert.equal(body.share_to_fb_destination_type, undefined);
   assert.equal(body.audience, undefined);
   assert.equal(notices, 0);
-  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  await page.window.fetch(SHARE_URL, { method: "POST", body: NEXT_BODY });
   assert.equal(params(page.sent[1].body).share_to_facebook, "true");
 });
 
@@ -258,7 +335,7 @@ test("tags the people the story mentions", async () => {
   assert.equal(body.audience, undefined);
   assert.equal(body.share_to_facebook, "true");
   assert.equal(notices, 0);
-  await page.window.fetch(SHARE_URL, { method: "POST", body: SHARE_BODY });
+  await page.window.fetch(SHARE_URL, { method: "POST", body: NEXT_BODY });
   assert.equal(params(page.sent[1].body).reel_mentions, undefined);
 });
 

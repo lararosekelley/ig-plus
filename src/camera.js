@@ -1628,13 +1628,15 @@
   // audience.js reports how a close friends share went.
   const SUCCESS = new Set(["close-friends", "shared"]);
   window.addEventListener("ig-plus:shared", (event) => {
-    const { status } = event.detail;
+    const { status, reason } = event.detail;
     const host = element("div");
     const root = host.attachShadow({ mode: "closed" });
     root.adoptedStyleSheets = [styles];
     const notice = element("div", {
       className: SUCCESS.has(status) ? "notice" : "notice warning",
-      textContent: SHARE_NOTICES[status],
+      textContent: reason
+        ? `${SHARE_NOTICES[status]} Instagram said: ${reason}`
+        : SHARE_NOTICES[status],
       onclick: () => host.remove(),
     });
     root.append(notice);
