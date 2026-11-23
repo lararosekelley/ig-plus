@@ -5,6 +5,15 @@ What changed in each version, for the people using the extension. Each section i
 publishes the section matching the tag as the GitHub release notes, so headings must stay
 `## X.Y.Z - YYYY-MM-DD`.
 
+## 1.1.1 - 2026-11-22
+
+### Fixed
+
+- Close friends stories went to everyone, and to Facebook, after a change to Instagram's story composer. They go to
+  close friends only again.
+- A story discarded with close friends on no longer makes the next story picked through Instagram's own composer
+  close friends too.
+
 ## 1.1.0 - 2026-11-15
 
 ### Added
