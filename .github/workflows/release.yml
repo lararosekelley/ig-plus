@@ -138,10 +138,15 @@ jobs:
 
   # Submits the version for review; the store publishes it once approved.
   # Secrets cannot gate a job, so each step checks for the store's item ID.
+  # It signs in as the service account linked to the store's publisher, through
+  # Workload Identity Federation, so no long-lived key or refresh token is kept.
   chrome:
     if: github.ref_type == 'tag'
     needs: [build, publish]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     env:
       EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
     steps:
@@ -156,10 +161,6 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
-
-      - if: env.EXTENSION_ID != ''
-        run: npm ci
 
       - if: env.EXTENSION_ID != ''
         uses: actions/download-artifact@v8
@@ -167,12 +168,20 @@ jobs:
           name: dist
           path: dist
 
+      - id: google
+        if: env.EXTENSION_ID != ''
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.CWS_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.CWS_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+          create_credentials_file: false
+
       - name: Upload and publish
         if: env.EXTENSION_ID != ''
         env:
           VERSION: ${{ needs.build.outputs.version }}
           PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
-          CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
-          REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
-        run: npx chrome-webstore-upload --source "dist/ig-plus-chrome-store-$VERSION.zip"
+          ACCESS_TOKEN: ${{ steps.google.outputs.access_token }}
+        run: node scripts/chrome-store.mjs "dist/ig-plus-chrome-store-$VERSION.zip"

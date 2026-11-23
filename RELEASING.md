@@ -27,9 +27,13 @@ Repository secrets:
 - `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`: API keys from
   [AMO's developer hub](https://addons.mozilla.org/developers/addon/api/key/), for the account that
   first signed `ig-plus@larakelley.com`.
-- `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, and `CWS_REFRESH_TOKEN`: a Google OAuth client and refresh
-  token for the Chrome Web Store API. See
-  [chrome-webstore-upload-keys](https://github.com/fregante/chrome-webstore-upload-keys).
+- `CWS_SERVICE_ACCOUNT` and `CWS_WORKLOAD_IDENTITY_PROVIDER`: the email of the Google Cloud service
+  account linked to the publisher in the Chrome Web Store dashboard, and the full name
+  (`projects/NUMBER/locations/global/workloadIdentityPools/POOL/providers/PROVIDER`) of a Workload
+  Identity Federation provider that trusts this repository's GitHub Actions and may impersonate that
+  account. See
+  [Use a service account with the Chrome Web Store API](https://developer.chrome.com/docs/webstore/service-accounts)
+  and [google-github-actions/auth](https://github.com/google-github-actions/auth#workload-identity-federation-through-a-service-account).
 - `CWS_EXTENSION_ID` and `CWS_PUBLISHER_ID`: the store item and publisher. Until
   `CWS_EXTENSION_ID` is set, releases skip the Chrome Web Store.
 - `IG_PLUS_CHROME_CLIENT_ID`: the client ID, ending in `.apps.googleusercontent.com`, of a Chrome
